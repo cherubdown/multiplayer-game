@@ -22,16 +22,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Godot and Linux export templates
+      - name: Cache Godot and Windows export templates
         id: godot-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/godot-bin
             ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}
-          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-linux-x86_64
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-windows-x86_64
 
-      - name: Install Godot (headless) and Linux export templates
+      - name: Install Godot (headless) and Windows export templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -45,12 +45,14 @@ jobs:
           mv "$tmp/Godot_v${tag}_linux.x86_64" ~/godot-bin/godot
           chmod +x ~/godot-bin/godot
 
-          # The full template bundle is over 1 GB; keep only the Linux x86_64 ones.
+          # The full template bundle is over 1 GB; keep only the Windows x86_64 ones.
+          # Windows builds export fine from the Linux runner.
           curl -fsSL --retry 3 -o "$tmp/templates.tpz" "$base/Godot_v${tag}_export_templates.tpz"
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
           mkdir -p "$dest"
           unzip -q -j "$tmp/templates.tpz" \
-            templates/linux_release.x86_64 templates/linux_debug.x86_64 templates/version.txt \
+            templates/windows_release_x86_64.exe templates/windows_debug_x86_64.exe \
+            templates/windows_release_x86_64_console.exe templates/windows_debug_x86_64_console.exe templates/version.txt \
             -d "$dest"
           rm -rf "$tmp"
 
@@ -64,10 +66,35 @@ jobs:
         env:
           GODOT: godot
 
-      - name: Upload Linux build
+      - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          path: "**/build/linux/"
+          name: windows-build
+          path: "**/build/windows/"
           if-no-files-found: error
           retention-days: 7
+
+  windows-smoke-test:
+    name: Launch Windows build
+    needs: import-export
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: build
+
+      - name: Start the exported game headless as a dedicated server, then quit
+        shell: pwsh
+        run: |
+          $console = Get-ChildItem -Path build -Recurse -Filter '*.console.exe' | Select-Object -First 1
+          if (-not $console) { Write-Error "No console wrapper found in the Windows build."; exit 1 }
+          Write-Host "Running $($console.FullName)"
+          $log = & $console.FullName --headless --quit-after 120 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $log
+          if ($code -ne 0) { Write-Error "Game exited with code $code."; exit 1 }
+          if ($log -match 'SCRIPT ERROR|Parse Error|Failed to load script') {
+            Write-Error "The Windows build reported script errors."; exit 1
+          }

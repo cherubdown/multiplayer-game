@@ -4,8 +4,9 @@
 set -euo pipefail
 
 GODOT="${GODOT:-godot}"
-EXPORT_PRESET="${EXPORT_PRESET:-Linux}"
-OUT_DIR="${OUT_DIR:-build/linux}"
+EXPORT_PRESET="${EXPORT_PRESET:-Windows}"
+OUT_DIR="${OUT_DIR:-build/windows}"
+EXE_NAME="${EXE_NAME:-game.exe}"
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 project_file="$(find "$repo_root" -name project.godot -not -path '*/.godot/*' -not -path '*/addons/*' | sort | head -n1)"
@@ -42,7 +43,7 @@ fi
 check_log "$log_dir/import.log" "Import"
 
 # Use the project's own export preset when it has one; otherwise add a
-# throwaway Linux preset so CI still proves the project exports.
+# throwaway Windows preset so CI still proves the project exports.
 if [[ -f export_presets.cfg ]] && grep -q "^name=\"$EXPORT_PRESET\"" export_presets.cfg; then
   echo "Using export preset \"$EXPORT_PRESET\" from export_presets.cfg"
 else
@@ -55,17 +56,20 @@ else
 [preset.0]
 
 name="$EXPORT_PRESET"
-platform="Linux"
+platform="Windows Desktop"
 runnable=true
 export_filter="all_resources"
 include_filter=""
 exclude_filter=""
-export_path="$OUT_DIR/game.x86_64"
+export_path="$OUT_DIR/$EXE_NAME"
 
 [preset.0.options]
 
 binary_format/embed_pck=false
 binary_format/architecture="x86_64"
+codesign/enable=false
+application/modify_resources=false
+debug/export_console_wrapper=2
 PRESET
   trap 'rm -f "$project_dir/export_presets.cfg"' EXIT
 fi
@@ -73,7 +77,7 @@ fi
 mkdir -p "$OUT_DIR"
 echo "::group::Export"
 set +e
-"$GODOT" --headless --export-release "$EXPORT_PRESET" "$OUT_DIR/game.x86_64" 2>&1 | tee "$log_dir/export.log"
+"$GODOT" --headless --export-release "$EXPORT_PRESET" "$OUT_DIR/$EXE_NAME" 2>&1 | tee "$log_dir/export.log"
 status=${PIPESTATUS[0]}
 set -e
 echo "::endgroup::"
@@ -83,8 +87,8 @@ if [[ $status -ne 0 ]]; then
 fi
 check_log "$log_dir/export.log" "Export"
 
-if [[ ! -s "$OUT_DIR/game.x86_64" ]]; then
-  echo "::error::Export finished but $OUT_DIR/game.x86_64 is missing."
+if [[ ! -s "$OUT_DIR/$EXE_NAME" ]]; then
+  echo "::error::Export finished but $OUT_DIR/$EXE_NAME is missing."
   exit 1
 fi
 echo "Exported:"
