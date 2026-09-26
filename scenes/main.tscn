@@ -57,6 +57,12 @@ max_value = 65535.0
 value = 7777.0
 prefix = "Port"
 
+[node name="ServerPassword" type="LineEdit" parent="Center/Panel/Margin/VBox/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Server password (optional)"
+secret = true
+
 [node name="HostButton" type="Button" parent="Center/Panel/Margin/VBox/Menu"]
 unique_name_in_owner = true
 layout_mode = 2

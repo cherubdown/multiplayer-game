@@ -15,11 +15,15 @@ echo "::group::Dedicated server from a fresh checkout (no import)"
 fresh="$(mktemp -d)"
 git ls-files -z | xargs -0 cp --parents -t "$fresh"
 fresh_log="$(mktemp)"
-timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --quit-after 60 2>&1 | tee "$fresh_log"
+timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --accounts=user://test_fresh_accounts.db --quit-after 60 2>&1 | tee "$fresh_log"
 rm -rf "$fresh"
 echo "::endgroup::"
-if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$fresh_log" >/dev/null; then
-  echo "::error::The dedicated server hits script errors on a fresh checkout that hasn't been imported."
+if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script|ERROR:' "$fresh_log" >/dev/null; then
+  echo "::error::The dedicated server hits errors on a fresh checkout that hasn't been imported."
+  exit 1
+fi
+if ! grep -q "Accounts are saved in" "$fresh_log"; then
+  echo "::error::The dedicated server didn't open its accounts database on a fresh checkout."
   exit 1
 fi
 
@@ -28,12 +32,12 @@ echo "::group::AccountStore"
 echo "::endgroup::"
 
 echo "::group::Login and character select against a listen-server host"
-timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.json
+timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.db
 echo "::endgroup::"
 
-echo "::group::Login and character select against a dedicated server"
+echo "::group::Server password, login and character select against a dedicated server"
 server_log="$(mktemp)"
-timeout 90 "$GODOT" --headless --path . --server --port="$((PORT + 1))" --accounts=user://test_server_accounts.json >"$server_log" 2>&1 &
+timeout 90 "$GODOT" --headless --path . --server --port="$((PORT + 1))" --accounts=user://test_server_accounts.db --server-password="let me in" >"$server_log" 2>&1 &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 for _ in $(seq 1 30); do
@@ -41,7 +45,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 status=0
-timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --port="$((PORT + 1))" || status=$?
+timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --port="$((PORT + 1))" --server-password="let me in" || status=$?
 kill "$server_pid" 2>/dev/null || true
 wait "$server_pid" 2>/dev/null || true
 echo "Server log:"

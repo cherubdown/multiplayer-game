@@ -7,6 +7,8 @@ extends SceneTree
 ##   godot --headless --path . -s tests/e2e_client.gd -- --host --port=7790
 ## Registers (or logs in), creates, deletes and picks a character, and checks
 ## that the server spawns the player into the world. Exits non-zero on failure.
+## Against a server started with --server-password=<password>, pass the same
+## flag: the test first checks a wrong password is turned away.
 
 var _failures := 0
 
@@ -20,9 +22,12 @@ func _run() -> void:
 	var session: Node = root.get_node("Session")
 	var port := 7790
 	var as_host := false
+	var server_password := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--port="):
 			port = int(arg.get_slice("=", 1))
+		if arg.begins_with("--server-password="):
+			server_password = arg.substr(arg.find("=") + 1)
 		as_host = as_host or arg == "--host"
 	var world: Node = load("res://scenes/test_world.tscn").instantiate()
 	# Same path as on the server (child of the Main scene root).
@@ -34,7 +39,11 @@ func _run() -> void:
 	if as_host:
 		network.host(port)
 	else:
-		network.join("127.0.0.1", port)
+		if server_password != "":
+			# Only returns once the server turns us away.
+			await _call_and_wait(network.wrong_password, network.join.bind("127.0.0.1", port, server_password + "x"))
+			_check(network.mode == network.Mode.OFFLINE, "wrong server password is turned away")
+		network.join("127.0.0.1", port, server_password)
 		await root.multiplayer.connected_to_server
 	var user := "e2e_%d" % (randi() % 100000)
 
