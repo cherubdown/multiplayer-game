@@ -6,6 +6,9 @@ extends Control
 ##   godot --host [--port=7777]                host and play (listen server)
 ##   godot --join=127.0.0.1 [--port=7777]      client
 ##
+## Add --server-password=<password> to any of them: servers then only let in
+## clients that send it, and clients send it when joining.
+##
 ## Flags may also be passed after "--" (user args), e.g. "godot -- --host".
 ##
 ## After hosting or joining, players log in (or create an account) and then pick,
@@ -25,6 +28,7 @@ const AccountStore := preload("res://scripts/account_store.gd")
 @onready var _lobby: Control = %Lobby
 @onready var _address: LineEdit = %Address
 @onready var _port: SpinBox = %Port
+@onready var _server_password: LineEdit = %ServerPassword
 @onready var _username: LineEdit = %Username
 @onready var _password: LineEdit = %Password
 @onready var _character_list: ItemList = %CharacterList
@@ -74,7 +78,7 @@ func _parse_args() -> Dictionary:
 		var key: String = arg.lstrip("-")
 		var value := ""
 		if "=" in key:
-			value = key.get_slice("=", 1)
+			value = key.substr(key.find("=") + 1)
 			key = key.get_slice("=", 0)
 		args[key] = value
 	return args
@@ -83,25 +87,27 @@ func _parse_args() -> Dictionary:
 func _launch_from_args(args: Dictionary) -> void:
 	var port := int(args["port"]) if args.get("port", "").is_valid_int() else Network.DEFAULT_PORT
 	var headless := DisplayServer.get_name() == "headless"
+	var server_password: String = args.get("server-password", "")
+	_server_password.text = server_password
 
 	if args.has("host"):
-		if Network.host(port) == OK:
+		if Network.host(port, server_password) == OK:
 			_start_game()
 	elif args.has("join"):
 		var address: String = args["join"] if args["join"] != "" else Network.DEFAULT_ADDRESS
-		if Network.join(address, port) == OK:
+		if Network.join(address, port, server_password) == OK:
 			_start_game()
 	elif args.has("server") or OS.has_feature("dedicated_server") or headless:
 		if not args.has("server"):
 			print("No launch flag given in a headless or server build; starting a dedicated server.")
-		if Network.start_dedicated_server(port) != OK:
+		if Network.start_dedicated_server(port, server_password) != OK:
 			get_tree().quit(1)
 			return
 		_start_game()
 
 
 func _on_host_pressed() -> void:
-	if Network.host(int(_port.value)) == OK:
+	if Network.host(int(_port.value), _server_password.text) == OK:
 		_start_game()
 
 
@@ -109,7 +115,7 @@ func _on_join_pressed() -> void:
 	var address := _address.text.strip_edges()
 	if address.is_empty():
 		address = Network.DEFAULT_ADDRESS
-	if Network.join(address, int(_port.value)) == OK:
+	if Network.join(address, int(_port.value), _server_password.text) == OK:
 		_start_game()
 
 
