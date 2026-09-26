@@ -35,6 +35,24 @@ echo "::group::Login and character select against a listen-server host"
 timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.db
 echo "::endgroup::"
 
+echo "::group::Joining a dedicated server that has no password"
+open_log="$(mktemp)"
+timeout 60 "$GODOT" --headless --path . --server --port="$((PORT + 2))" --accounts=user://test_open_accounts.db >"$open_log" 2>&1 &
+open_pid=$!
+for _ in $(seq 1 30); do
+  grep -q "Dedicated server listening" "$open_log" && break
+  sleep 1
+done
+status=0
+timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --port="$((PORT + 2))" || status=$?
+kill "$open_pid" 2>/dev/null || true
+wait "$open_pid" 2>/dev/null || true
+echo "::endgroup::"
+if [[ $status -ne 0 ]]; then
+  echo "::error::Joining a dedicated server without a password failed."
+  exit "$status"
+fi
+
 echo "::group::Server password, login and character select against a dedicated server"
 server_log="$(mktemp)"
 timeout 90 "$GODOT" --headless --path . --server --port="$((PORT + 1))" --accounts=user://test_server_accounts.db --server-password="let me in" >"$server_log" 2>&1 &

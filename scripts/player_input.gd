@@ -8,6 +8,8 @@ const MOUSE_SENSITIVITY := 0.003
 @export var direction := Vector2.ZERO
 ## Camera yaw, replicated so the server can move the body camera-relative.
 @export var yaw := 0.0
+## Held walk key: move slowly instead of running.
+@export var walking := false
 ## Camera pitch, local only.
 var pitch := -0.3
 
@@ -24,8 +26,10 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		direction = Vector2.ZERO
+		walking = false
 		return
 	direction = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	walking = Input.is_action_pressed("walk")
 	if Input.is_action_just_pressed("jump"):
 		jump.rpc_id(1)
 

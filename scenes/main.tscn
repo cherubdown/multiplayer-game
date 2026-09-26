@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/character_preview.gd" id="2_preview"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -20,7 +21,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Center"]
-custom_minimum_size = Vector2(360, 0)
+custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="Center/Panel"]
@@ -131,10 +132,28 @@ layout_mode = 2
 text = "Choose a character"
 horizontal_alignment = 1
 
+[node name="Preview" type="SubViewportContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 240)
+layout_mode = 2
+script = ExtResource("2_preview")
+
+[node name="RaceInfo" type="Label" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="CharacterList" type="ItemList" parent="Center/Panel/Margin/VBox/CharacterSelect"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 160)
+custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
+
+[node name="RacePicker" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="NewCharacter" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
 layout_mode = 2

@@ -25,7 +25,8 @@ func _init() -> void:
 	_check(store.verify("nobody", "secret1") != "", "rejects an unknown account")
 	_check(store.display_name("chris") == "Chris", "keeps the typed username")
 
-	_check(store.create_character("chris", "Ragnar") == "", "creates a character")
+	_check(store.create_character("chris", "Ragnar", "dwarf") == "", "creates a character")
+	_check(store.create_character("chris", "Orc", "orc") != "", "rejects an unknown race")
 	_check(store.create_character("chris", "ragnar") != "", "rejects a duplicate name")
 	_check(store.create_character("chris", "1x") != "", "rejects an invalid name")
 	for character_name in ["Astrid", "Bjorn", "Freya", "Leif"]:
@@ -43,12 +44,15 @@ func _init() -> void:
 	_check(reloaded.verify("chris", "secret1") == "", "password survives a reload")
 	var names := reloaded.list_characters("chris").map(func(c: Dictionary) -> String: return c["name"])
 	_check(names == ["Ragnar", "Astrid", "Freya", "Leif"], "characters survive a reload in order")
+	var races := reloaded.list_characters("chris").map(func(c: Dictionary) -> String: return c["race"])
+	_check(races == ["dwarf", "human", "human", "human"], "races survive a reload, human by default")
 	reloaded.close()
 	var raw := FileAccess.get_file_as_bytes(PATH).hex_encode()
 	_check(raw.contains("Ragnar".to_utf8_buffer().hex_encode()), "database was written")
 	_check(not raw.contains("secret1".to_utf8_buffer().hex_encode()), "password is not stored in plain text")
 
 	_check_legacy_import()
+	_check_race_migration()
 
 	_remove_test_files()
 	print("AccountStore: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
@@ -85,6 +89,32 @@ func _check_legacy_import() -> void:
 	_check(int(reloaded._account("olga")["iterations"]) == AccountStore.PBKDF2_ITERATIONS, "upgrades the old hash at login")
 	_check(reloaded.verify("olga", "oldpass1") == "", "upgraded hash still accepts the password")
 	reloaded.close()
+
+
+## A database from before races (schema 1) gets a race column, and its
+## characters become humans.
+func _check_race_migration() -> void:
+	_remove_test_files()
+	var db: Object = ClassDB.instantiate("SQLite")
+	db.path = PATH
+	db.default_extension = ""
+	db.verbosity_level = 0
+	db.open_db()
+	db.query("""
+		CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+			salt BLOB NOT NULL, hash BLOB NOT NULL, iterations INTEGER NOT NULL, created INTEGER NOT NULL);
+		CREATE TABLE characters (id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, name TEXT NOT NULL,
+			name_key TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (account_id, name_key));
+		INSERT INTO accounts VALUES (1, 'old', 'Old', x'00', x'00', 1, 1);
+		INSERT INTO characters VALUES (1, 1, 'Sven', 'sven', 1);
+		PRAGMA user_version = 1;
+	""")
+	db.close_db()
+	var store := AccountStore.new(PATH)
+	var characters := store.list_characters("old")
+	_check(characters.size() == 1 and characters[0]["race"] == "human", "old characters become humans")
+	_check(store.create_character("old", "Galadriel", "elf") == "", "migrated database takes new races")
+	store.close()
 
 
 func _remove_test_files() -> void:

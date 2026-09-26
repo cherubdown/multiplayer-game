@@ -40,6 +40,10 @@ Both presets leave "Modify Resources" off so they export without rcedit. Turn it
 
 After you host or join, you log in to that server. The first time, type a username and password and press **Create account**; after that, **Log in**. Then the character select screen lets you create up to 5 characters, delete them, and pick one with **Play** (or double-click it) to enter the world.
 
+Every character is a **Human**, an **Elf** or a **Dwarf**. Pick the race with the buttons above the name box before pressing **Create**; the preview shows the race's model, and selecting a character in the list shows theirs. The race is saved with the character and can't be changed later. Characters made before races existed are humans.
+
+The character models are from Kay Lousberg's [KayKit Adventurers](https://kaylousberg.itch.io/kaykit-adventurers) pack (CC0, see `assets/characters/kaykit_adventurers/LICENSE.txt`): humans are the knight, elves the rogue (taller and slimmer, with pointed ears) and dwarves the barbarian (short and broad, with a long braided beard). `scripts/races.gd` lists which parts and weapons each race shows and how it is scaled.
+
 Accounts belong to the server, not to your PC. The host (or dedicated server) keeps every account and its characters in a SQLite database, `accounts.db`, in its user data folder, which on Windows is `%APPDATA%\Godot\app_userdata\Multiplayer Survival Game\`. There is nothing to install or set up: the server creates the database the first time it starts and prints its full path. Pass `--accounts=<path>` to the host or server to keep it somewhere else. To back up a server's accounts, stop the server and copy `accounts.db`. If an older build left an `accounts.json` there, its accounts move into the new database on first start and the file is renamed `accounts.json.imported`.
 
 Passwords are never stored: the database holds a random per-account salt and a PBKDF2-HMAC-SHA256 hash (100,000 iterations). Account and server passwords do cross the network unencrypted, so don't reuse a password you care about.
@@ -48,11 +52,11 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 ## Playing
 
-Once you pick a character you're in a flat test world. Move with WASD or the arrow keys, jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
+Once you pick a character you're in a flat test world. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
 To try two players on one machine, start one copy with `--host` and another with `--join=127.0.0.1`.
 
-Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position and rotation to everyone.
+Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never load the models, so they still start from a checkout that was never opened in the editor, and the dedicated server export leaves them out.
 
 ## Layout
 
@@ -62,6 +66,7 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 - `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes and characters on the server in SQLite, creating and upgrading the tables as needed.
 - `addons/godot-sqlite/` is the vendored SQLite extension.
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the flat test world. On the server it spawns a player per peer through a `MultiplayerSpawner`.
+- `scripts/races.gd` defines the races; `scripts/character_model.gd` builds and animates a race's model, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
 - `tests/` has headless tests for the account store and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.
