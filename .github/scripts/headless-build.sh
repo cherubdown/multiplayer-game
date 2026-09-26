@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Headless import + export of the Godot project. Used by CI and runnable locally:
 #   GODOT=/path/to/godot .github/scripts/headless-build.sh
+# Exports each preset in EXPORT_PRESETS (semicolon-separated) to the
+# export_path set for it in export_presets.cfg.
 set -euo pipefail
 
 GODOT="${GODOT:-godot}"
-EXPORT_PRESET="${EXPORT_PRESET:-Windows}"
-OUT_DIR="${OUT_DIR:-build/windows}"
-EXE_NAME="${EXE_NAME:-game.exe}"
+EXPORT_PRESETS="${EXPORT_PRESETS:-Windows Desktop;Windows Dedicated Server}"
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 project_file="$(find "$repo_root" -name project.godot -not -path '*/.godot/*' -not -path '*/addons/*' | sort | head -n1)"
@@ -18,11 +18,27 @@ project_dir="$(dirname "$project_file")"
 echo "Godot project: ${project_dir#"$repo_root"/}"
 cd "$project_dir"
 
+if [[ ! -f export_presets.cfg ]]; then
+  echo "::error::No export_presets.cfg next to project.godot."
+  exit 1
+fi
+
 log_dir="$(mktemp -d)"
 
 # Godot exits 0 on script parse errors, so scan the log as well as the exit code.
-check_log() {
-  local log="$1" step="$2"
+run_godot() {
+  local step="$1"; shift
+  local log="$log_dir/$(echo "$step" | tr -c 'A-Za-z0-9' '_').log"
+  echo "::group::$step"
+  set +e
+  "$GODOT" --headless "$@" 2>&1 | tee "$log"
+  local status=${PIPESTATUS[0]}
+  set -e
+  echo "::endgroup::"
+  if [[ $status -ne 0 ]]; then
+    echo "::error::$step failed with exit code $status."
+    exit "$status"
+  fi
   if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource' "$log" >/dev/null; then
     echo "::error::$step reported script or resource errors:"
     grep -E -A1 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource' "$log"
@@ -30,66 +46,31 @@ check_log() {
   fi
 }
 
-echo "::group::Import"
-set +e
-"$GODOT" --headless --import 2>&1 | tee "$log_dir/import.log"
-status=${PIPESTATUS[0]}
-set -e
-echo "::endgroup::"
-if [[ $status -ne 0 ]]; then
-  echo "::error::Import failed with exit code $status."
-  exit "$status"
-fi
-check_log "$log_dir/import.log" "Import"
+# Prints the export_path of the named preset in export_presets.cfg.
+preset_export_path() {
+  awk -v want="name=\"$1\"" '
+    /^\[preset\.[0-9]+\]$/ { in_preset = 1; found = 0; next }
+    /^\[/ { in_preset = 0 }
+    in_preset && $0 == want { found = 1 }
+    in_preset && found && /^export_path=/ { sub(/^export_path="/, ""); sub(/"$/, ""); print; exit }
+  ' export_presets.cfg
+}
 
-# Use the project's own export preset when it has one; otherwise add a
-# throwaway Windows preset so CI still proves the project exports.
-if [[ -f export_presets.cfg ]] && grep -q "^name=\"$EXPORT_PRESET\"" export_presets.cfg; then
-  echo "Using export preset \"$EXPORT_PRESET\" from export_presets.cfg"
-else
-  if [[ -f export_presets.cfg ]]; then
-    echo "::error::export_presets.cfg has no preset named \"$EXPORT_PRESET\"."
+run_godot "Import" --import
+
+IFS=';' read -r -a presets <<< "$EXPORT_PRESETS"
+for preset in "${presets[@]}"; do
+  out="$(preset_export_path "$preset")"
+  if [[ -z "$out" ]]; then
+    echo "::error::export_presets.cfg has no preset named \"$preset\" with an export_path."
     exit 1
   fi
-  echo "No export_presets.cfg; generating a temporary \"$EXPORT_PRESET\" preset"
-  cat > export_presets.cfg <<PRESET
-[preset.0]
-
-name="$EXPORT_PRESET"
-platform="Windows Desktop"
-runnable=true
-export_filter="all_resources"
-include_filter=""
-exclude_filter=""
-export_path="$OUT_DIR/$EXE_NAME"
-
-[preset.0.options]
-
-binary_format/embed_pck=false
-binary_format/architecture="x86_64"
-codesign/enable=false
-application/modify_resources=false
-debug/export_console_wrapper=2
-PRESET
-  trap 'rm -f "$project_dir/export_presets.cfg"' EXIT
-fi
-
-mkdir -p "$OUT_DIR"
-echo "::group::Export"
-set +e
-"$GODOT" --headless --export-release "$EXPORT_PRESET" "$OUT_DIR/$EXE_NAME" 2>&1 | tee "$log_dir/export.log"
-status=${PIPESTATUS[0]}
-set -e
-echo "::endgroup::"
-if [[ $status -ne 0 ]]; then
-  echo "::error::Export failed with exit code $status."
-  exit "$status"
-fi
-check_log "$log_dir/export.log" "Export"
-
-if [[ ! -s "$OUT_DIR/$EXE_NAME" ]]; then
-  echo "::error::Export finished but $OUT_DIR/$EXE_NAME is missing."
-  exit 1
-fi
-echo "Exported:"
-ls -la "$OUT_DIR"
+  mkdir -p "$(dirname "$out")"
+  run_godot "Export $preset" --export-release "$preset" "$out"
+  if [[ ! -s "$out" ]]; then
+    echo "::error::Export of \"$preset\" finished but $out is missing."
+    exit 1
+  fi
+  echo "Exported \"$preset\":"
+  ls -la "$(dirname "$out")"
+done

@@ -66,30 +66,38 @@ jobs:
         env:
           GODOT: godot
 
-      - name: Upload Windows build
+      - name: Upload Windows client build
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
+          name: windows-client
           path: "**/build/windows/"
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload Windows dedicated server build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-server
+          path: "**/build/windows-server/"
+          if-no-files-found: error
+          retention-days: 7
+
   windows-smoke-test:
-    name: Launch Windows build
+    name: Launch Windows dedicated server
     needs: import-export
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: windows-build
+          name: windows-server
           path: build
 
-      - name: Start the exported game headless as a dedicated server, then quit
+      - name: Start the exported dedicated server, then quit
         shell: pwsh
         run: |
           $console = Get-ChildItem -Path build -Recurse -Filter '*.console.exe' | Select-Object -First 1
-          if (-not $console) { Write-Error "No console wrapper found in the Windows build."; exit 1 }
+          if (-not $console) { Write-Error "No console wrapper found in the Windows server build."; exit 1 }
           Write-Host "Running $($console.FullName)"
           $log = & $console.FullName --headless --quit-after 120 2>&1 | Out-String
           $code = $LASTEXITCODE
