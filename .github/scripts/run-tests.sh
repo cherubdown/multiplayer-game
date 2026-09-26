@@ -8,6 +8,21 @@ GODOT="${GODOT:-godot}"
 PORT="${TEST_PORT:-7790}"
 cd "$(dirname "$0")/../.."
 
+# People run the project straight from a checkout without opening the editor,
+# so there is no .godot/ import cache (and no global class_name cache). Make
+# sure the dedicated server still starts that way.
+echo "::group::Dedicated server from a fresh checkout (no import)"
+fresh="$(mktemp -d)"
+git ls-files -z | xargs -0 cp --parents -t "$fresh"
+fresh_log="$(mktemp)"
+timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --quit-after 60 2>&1 | tee "$fresh_log"
+rm -rf "$fresh"
+echo "::endgroup::"
+if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' "$fresh_log" >/dev/null; then
+  echo "::error::The dedicated server hits script errors on a fresh checkout that hasn't been imported."
+  exit 1
+fi
+
 echo "::group::AccountStore"
 "$GODOT" --headless --path . -s tests/test_account_store.gd
 echo "::endgroup::"

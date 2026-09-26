@@ -17,6 +17,7 @@ extends Control
 ## into it). Once in the world, the menu becomes an overlay toggled with Esc.
 
 const WORLD_SCENE := preload("res://scenes/test_world.tscn")
+const AccountStore := preload("res://scripts/account_store.gd")
 
 @onready var _menu: Control = %Menu
 @onready var _login: Control = %Login

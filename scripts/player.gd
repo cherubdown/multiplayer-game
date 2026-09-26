@@ -6,6 +6,10 @@ extends CharacterBody3D
 ## Position and rotation are replicated from the server to every peer by
 ## ServerSynchronizer.
 
+# Preloaded rather than a class_name so it resolves on a fresh checkout that
+# hasn't been imported in the editor (no global class cache yet).
+const PlayerInput := preload("res://scripts/player_input.gd")
+
 const SPEED := 5.0
 const JUMP_VELOCITY := 4.5
 const TURN_SPEED := 10.0
