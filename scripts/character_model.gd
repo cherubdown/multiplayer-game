@@ -20,6 +20,8 @@ const BLEND := 0.2
 
 const LOOPING := ["Idle", "Walking_A", "Running_A", "Jump_Idle"]
 
+static var _warned_not_imported := false
+
 var race := ""
 var _animation: AnimationPlayer
 var _current := ""
@@ -34,9 +36,12 @@ static func can_show_models() -> bool:
 func setup(p_race: String) -> bool:
 	race = p_race if Races.is_valid(p_race) else Races.DEFAULT
 	var info: Dictionary = Races.INFO[race]
-	if not can_show_models() or not ResourceLoader.exists(info["model"]):
+	if not can_show_models() or not _is_imported(info["model"]):
 		return false
-	var model: Node3D = load(info["model"]).instantiate()
+	var scene := load(info["model"]) as PackedScene
+	if scene == null:
+		return false
+	var model: Node3D = scene.instantiate()
 	# The models face +Z; players face -Z.
 	model.rotation.y = PI
 	model.scale = info["scale"]
@@ -151,6 +156,25 @@ func _add_piece(parent: Node3D, mesh: Mesh, position: Vector3, rotation: Vector3
 	piece.position = position
 	piece.rotation = rotation
 	parent.add_child(piece)
+
+
+## Whether path can be loaded. A checkout that was never opened in the editor
+## (or run with --import) has the .import files but not the imported scenes
+## they point to, and loading one then fails with errors.
+static func _is_imported(path: String) -> bool:
+	if not ResourceLoader.exists(path):
+		return false
+	var import_file := ConfigFile.new()
+	if import_file.load(path + ".import") != OK:
+		return true  # Exported builds keep only the remap, not the .import file.
+	var imported: String = import_file.get_value("remap", "path", "")
+	if imported == "" or FileAccess.file_exists(imported):
+		return true
+	if not _warned_not_imported:
+		_warned_not_imported = true
+		push_warning("Character models aren't imported, so players show as capsules. "
+			+ "Open the project in the Godot editor once, or run Godot with --import.")
+	return false
 
 
 func _attach_to_bone(skeleton: Skeleton3D, bone: String) -> BoneAttachment3D:
