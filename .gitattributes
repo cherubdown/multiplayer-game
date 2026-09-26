@@ -6,3 +6,4 @@
 *.so binary
 *.glb binary
 *.png binary
+*.bat text eol=crlf
