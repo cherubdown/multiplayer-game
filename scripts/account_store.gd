@@ -1,4 +1,3 @@
-class_name AccountStore
 extends RefCounted
 ## Server-side accounts and characters, saved as JSON (user://accounts.json by
 ## default). Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes.

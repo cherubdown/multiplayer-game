@@ -1,4 +1,3 @@
-class_name PlayerInput
 extends Node
 ## Collects input on the owning client and replicates it to the server via
 ## InputSynchronizer. Only the owning peer has authority over this node.

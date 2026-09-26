@@ -3,6 +3,7 @@ extends SceneTree
 ##   godot --headless --path . -s tests/test_account_store.gd
 ## Exits non-zero if any check fails.
 
+const AccountStore := preload("res://scripts/account_store.gd")
 const PATH := "user://test_accounts.json"
 
 var _failures := 0

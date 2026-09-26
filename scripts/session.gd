@@ -27,6 +27,9 @@ signal leaving_world
 signal player_entered(peer_id: int, character_name: String)
 signal player_left(peer_id: int)
 
+# Preloaded rather than a class_name so it resolves on a fresh checkout that
+# hasn't been imported in the editor (no global class cache yet).
+const AccountStore := preload("res://scripts/account_store.gd")
 const MAX_FAILED_LOGINS := 5
 
 ## Client side state.
