@@ -244,6 +244,12 @@ func _set_roster(p_roster: Dictionary) -> void:
 
 # --- Server helpers ---------------------------------------------------------
 
+## Server side: opens the accounts database, creating it if it's new, so
+## problems show up when the server starts rather than at the first login.
+func open_accounts() -> void:
+	_accounts()
+
+
 func _accounts() -> AccountStore:
 	if _store == null:
 		# --accounts=<path> keeps accounts somewhere else, e.g. for tests.
@@ -252,7 +258,8 @@ func _accounts() -> AccountStore:
 			if arg.begins_with("--accounts="):
 				path = arg.get_slice("=", 1)
 		_store = AccountStore.new(path)
-		print("Accounts are saved in %s" % ProjectSettings.globalize_path(_store.path))
+		if _store.is_open():
+			print("Accounts are saved in %s" % ProjectSettings.globalize_path(_store.path))
 	return _store
 
 

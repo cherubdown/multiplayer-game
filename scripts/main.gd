@@ -283,6 +283,9 @@ func _unhandled_input(event: InputEvent) -> void:
 ## soon as they start connecting so it already exists when the server's spawner
 ## replicates players into it.
 func _start_game() -> void:
+	if multiplayer.is_server():
+		# Creates the accounts database on a server's first start.
+		Session.open_accounts()
 	if _world == null:
 		_world = WORLD_SCENE.instantiate()
 		add_child(_world)

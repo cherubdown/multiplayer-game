@@ -56,6 +56,11 @@ preset_export_path() {
   ' export_presets.cfg
 }
 
+# Godot 4.7.2 crashes on exit when a first import discovers a GDExtension
+# (godot-sqlite), so list the extensions up front the way the editor would.
+mkdir -p .godot
+find . -name '*.gdextension' -not -path './.godot/*' | sed 's#^\./#res://#' | sort > .godot/extension_list.cfg
+
 run_godot "Import" --import
 
 IFS=';' read -r -a presets <<< "$EXPORT_PRESETS"

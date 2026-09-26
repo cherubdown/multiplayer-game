@@ -108,6 +108,10 @@ jobs:
           $code = $LASTEXITCODE
           Write-Host $log
           if ($code -ne 0) { Write-Error "Game exited with code $code."; exit 1 }
-          if ($log -match 'SCRIPT ERROR|Parse Error|Failed to load script') {
-            Write-Error "The Windows build reported script errors."; exit 1
+          if ($log -match 'SCRIPT ERROR|Parse Error|Failed to load script|ERROR:') {
+            Write-Error "The Windows build reported errors."; exit 1
+          }
+          # The server creates its SQLite accounts database on first start.
+          if ($log -notmatch 'Created the accounts database') {
+            Write-Error "The Windows server didn't create its accounts database."; exit 1
           }

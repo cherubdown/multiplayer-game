@@ -38,7 +38,11 @@ Both presets leave "Modify Resources" off so they export without rcedit. Turn it
 
 After you host or join, you log in to that server. The first time, type a username and password and press **Create account**; after that, **Log in**. Then the character select screen lets you create up to 5 characters, delete them, and pick one with **Play** (or double-click it) to enter the world.
 
-Accounts belong to the server, not to your PC: the host (or dedicated server) keeps every account and its characters in `accounts.json` in its user data folder, which on Windows is `%APPDATA%\Godot\app_userdata\Multiplayer Survival Game\` (the server prints the full path when the first player logs in). Pass `--accounts=<path>` to the host or server to keep them somewhere else. Passwords are stored as salted PBKDF2-SHA256 hashes, but they cross the network unencrypted, so don't reuse a password you care about.
+Accounts belong to the server, not to your PC. The host (or dedicated server) keeps every account and its characters in a SQLite database, `accounts.db`, in its user data folder, which on Windows is `%APPDATA%\Godot\app_userdata\Multiplayer Survival Game\`. There is nothing to install or set up: the server creates the database the first time it starts and prints its full path. Pass `--accounts=<path>` to the host or server to keep it somewhere else. To back up a server's accounts, stop the server and copy `accounts.db`. If an older build left an `accounts.json` there, its accounts move into the new database on first start and the file is renamed `accounts.json.imported`.
+
+Passwords are never stored: the database holds a random per-account salt and a PBKDF2-HMAC-SHA256 hash (100,000 iterations). Passwords do cross the network unencrypted, so don't reuse a password you care about.
+
+The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-sqlite) extension (MIT licensed), vendored in `addons/godot-sqlite/` with its Windows and Linux x86_64 libraries. Exports copy the DLL next to the .exe, so keep the two together when you move a server build.
 
 ## Playing
 
@@ -53,7 +57,8 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 - `scripts/network.gd` is the `Network` autoload that owns the `ENetMultiplayerPeer` and the three launch modes.
 - `scenes/main.tscn` with `scripts/main.gd` is the entry scene: it reads the flags, or shows the Host / Join menu, then the login and character select screens, and in game a list of who is playing.
 - `scripts/session.gd` is the `Session` autoload: the login, character and enter-world requests clients send to the server, and the server's record of who is logged in and who is in the world.
-- `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes and characters on the server.
+- `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes and characters on the server in SQLite, creating and upgrading the tables as needed.
+- `addons/godot-sqlite/` is the vendored SQLite extension.
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the flat test world. On the server it spawns a player per peer through a `MultiplayerSpawner`.
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
 - `tests/` has headless tests for the account store and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
