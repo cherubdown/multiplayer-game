@@ -4,22 +4,30 @@ extends CharacterBody3D
 ## The server (peer 1) owns this body and runs its physics. The owning client
 ## only owns the PlayerInput child, whose state is replicated to the server.
 ## Position and rotation are replicated from the server to every peer by
-## ServerSynchronizer.
+## ServerSynchronizer, along with velocity and airborne so every peer can play
+## the right animation on the character's race model.
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
 const PlayerInput := preload("res://scripts/player_input.gd")
+const CharacterModel := preload("res://scripts/character_model.gd")
+const Races := preload("res://scripts/races.gd")
 
 const SPEED := 5.0
+const WALK_SPEED := 2.0
 const JUMP_VELOCITY := 4.5
 const TURN_SPEED := 10.0
 
 @onready var input: PlayerInput = $PlayerInput
 @onready var camera: Camera3D = $CameraPivot/SpringArm3D/Camera3D
 @onready var camera_pivot: Node3D = $CameraPivot
+@onready var model: CharacterModel = $Model
 
 ## Set by the server before spawning; replicated once at spawn time.
 @export var character_name := ""
+@export var race := Races.DEFAULT
+## Set by the server every physics step, for animations.
+@export var airborne := false
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -37,8 +45,12 @@ func _ready() -> void:
 	$Nameplate.visible = not is_local
 	if is_local:
 		Session.leaving_world.connect(_on_leaving_world)
-	# Local player gets a different color so you can tell yourself apart.
-	if is_local:
+	if model.setup(race):
+		$Body.visible = false
+		$Nameplate.position.y = Races.INFO[model.race]["scale"].y * 2.35 + 0.3
+	elif is_local:
+		# Without a model (e.g. a headless peer), the local player's capsule
+		# gets a different color so you can tell yourself apart.
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.2, 0.6, 1.0)
 		$Body.material_override = mat
@@ -52,6 +64,7 @@ func _process(_delta: float) -> void:
 	# The camera follows the local input's look direction, independent of
 	# which way the body is facing.
 	camera_pivot.global_rotation = Vector3(input.pitch, input.yaw, 0.0)
+	model.set_motion(Vector2(velocity.x, velocity.z).length(), airborne)
 
 
 func _physics_process(delta: float) -> void:
@@ -68,8 +81,9 @@ func _physics_process(delta: float) -> void:
 	var dir := Vector3(input.direction.x, 0.0, input.direction.y).rotated(Vector3.UP, input.yaw)
 	if dir.length_squared() > 0.0:
 		dir = dir.normalized() * minf(input.direction.length(), 1.0)
-		velocity.x = dir.x * SPEED
-		velocity.z = dir.z * SPEED
+		var speed := WALK_SPEED if input.walking else SPEED
+		velocity.x = dir.x * speed
+		velocity.z = dir.z * speed
 		var target_yaw := atan2(-dir.x, -dir.z)
 		rotation.y = lerp_angle(rotation.y, target_yaw, TURN_SPEED * delta)
 	else:
@@ -77,3 +91,4 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, SPEED)
 
 	move_and_slide()
+	airborne = not is_on_floor()

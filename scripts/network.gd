@@ -17,6 +17,8 @@ const MAX_PLAYERS := 10
 ## What the server answers a client's password with.
 const AUTH_OK := "ok"
 const AUTH_WRONG_PASSWORD := "wrong_password"
+## Clients send this followed by the server password (possibly empty).
+const AUTH_PASSWORD_PREFIX := "pw:"
 
 ## Sent when a client is turned away for a wrong server password.
 signal wrong_password
@@ -136,7 +138,9 @@ func _password_note() -> String:
 func _on_peer_authenticating(id: int) -> void:
 	# The client speaks first; the server waits for its password.
 	if not multiplayer.is_server():
-		multiplayer.send_auth(id, _password.to_utf8_buffer())
+		# Prefixed so an empty password is still a non-empty message (Godot
+		# refuses to send empty auth data, which broke passwordless joins).
+		multiplayer.send_auth(id, (AUTH_PASSWORD_PREFIX + _password).to_utf8_buffer())
 		multiplayer.complete_auth(id)
 
 
@@ -144,7 +148,7 @@ func _on_auth_data(id: int, data: PackedByteArray) -> void:
 	if not multiplayer.is_server():
 		_rejected = data.get_string_from_utf8() == AUTH_WRONG_PASSWORD
 		return
-	if _password == "" or _hashes_match(data, _password.to_utf8_buffer()):
+	if _password == "" or _hashes_match(data, (AUTH_PASSWORD_PREFIX + _password).to_utf8_buffer()):
 		multiplayer.send_auth(id, AUTH_OK.to_utf8_buffer())
 		multiplayer.complete_auth(id)
 		return

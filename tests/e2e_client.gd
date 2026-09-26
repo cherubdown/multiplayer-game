@@ -6,7 +6,7 @@ extends SceneTree
 ## or, to check the same flow as a listen-server host with no separate server:
 ##   godot --headless --path . -s tests/e2e_client.gd -- --host --port=7790
 ## Registers (or logs in), creates, deletes and picks a character, and checks
-## that the server spawns the player into the world. Exits non-zero on failure.
+## that the server spawns the player into the world with its race. Exits non-zero on failure.
 ## Against a server started with --server-password=<password>, pass the same
 ## flag: the test first checks a wrong password is turned away.
 
@@ -53,8 +53,11 @@ func _run() -> void:
 	result = await _call_and_wait(session.login_finished, session.register.bind(user, "password1"))
 	_check(result[0], "registers and logs in: %s" % result[1])
 
-	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Ragnar"))
+	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Ragnar", "dwarf"))
 	_check(result[0].size() == 1 and result[1] == "", "creates a character")
+	_check(result[0].size() == 1 and result[0][0]["race"] == "dwarf", "character keeps its race")
+	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Grom", "orc"))
+	_check(result[0].size() == 1 and result[1] != "", "rejects an unknown race")
 	await _call_and_wait(session.characters_changed, session.create_character.bind("Astrid"))
 	result = await _call_and_wait(session.characters_changed, session.delete_character.bind("Astrid"))
 	_check(result[0].size() == 1 and result[0][0]["name"] == "Ragnar", "deletes a character")
@@ -65,6 +68,7 @@ func _run() -> void:
 	var player := world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id())
 	_check(player != null, "server spawned our player")
 	_check(player != null and player.character_name == "Ragnar", "player carries the character name")
+	_check(player != null and player.race == "dwarf", "player carries the character's race")
 
 	await _call_and_wait(session.left_world, session.leave_world)
 	await create_timer(0.5).timeout

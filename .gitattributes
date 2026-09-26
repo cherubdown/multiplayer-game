@@ -4,3 +4,5 @@
 # Vendored native libraries.
 *.dll binary
 *.so binary
+*.glb binary
+*.png binary

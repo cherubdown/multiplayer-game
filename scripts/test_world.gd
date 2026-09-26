@@ -15,13 +15,14 @@ func _ready() -> void:
 	Session.player_left.connect(_remove_player)
 	var in_world := Session.players_in_world()
 	for id in in_world:
-		_add_player(id, in_world[id])
+		_add_player(id, in_world[id], Session.race_of(id))
 
 
-func _add_player(id: int, character_name: String) -> void:
+func _add_player(id: int, character_name: String, race: String) -> void:
 	var player := PLAYER_SCENE.instantiate()
 	player.name = str(id)
 	player.character_name = character_name
+	player.race = race
 	# Spread spawns out so players don't start inside each other.
 	var angle := randf() * TAU
 	player.position = Vector3(cos(angle), 0.0, sin(angle)) * 3.0 + Vector3.UP

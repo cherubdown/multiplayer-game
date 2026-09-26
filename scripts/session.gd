@@ -24,12 +24,13 @@ signal roster_changed(roster: Dictionary)
 signal leaving_world
 
 ## Server side: spawn or despawn this peer's player.
-signal player_entered(peer_id: int, character_name: String)
+signal player_entered(peer_id: int, character_name: String, race: String)
 signal player_left(peer_id: int)
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
 const AccountStore := preload("res://scripts/account_store.gd")
+const Races := preload("res://scripts/races.gd")
 const MAX_FAILED_LOGINS := 5
 
 ## Client side state.
@@ -42,6 +43,7 @@ var roster := {}
 var _store: AccountStore
 var _usernames := {}          # peer id -> logged in username (lowercase)
 var _in_world := {}           # peer id -> character name
+var _races := {}              # peer id -> race of the character in the world
 var _failed_logins := {}      # peer id -> count
 
 
@@ -58,6 +60,11 @@ func players_in_world() -> Dictionary:
 	return _in_world.duplicate()
 
 
+## Server side: the race of a peer's character in the world.
+func race_of(peer: int) -> String:
+	return _races.get(peer, Races.DEFAULT)
+
+
 ## Forgets everything, on both sides. Called when leaving a game.
 func reset() -> void:
 	username = ""
@@ -66,6 +73,7 @@ func reset() -> void:
 	roster = {}
 	_usernames.clear()
 	_in_world.clear()
+	_races.clear()
 	_failed_logins.clear()
 
 
@@ -86,8 +94,8 @@ func logout() -> void:
 	character_name = ""
 
 
-func create_character(p_name: String) -> void:
-	_request_create_character.rpc_id(1, p_name)
+func create_character(p_name: String, race: String = Races.DEFAULT) -> void:
+	_request_create_character.rpc_id(1, p_name, race)
 
 
 func delete_character(p_name: String) -> void:
@@ -155,12 +163,12 @@ func _request_logout() -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _request_create_character(p_name) -> void:
+func _request_create_character(p_name, race) -> void:
 	var peer := _logged_in_sender()
-	if peer == 0 or not p_name is String:
+	if peer == 0 or not p_name is String or not race is String:
 		return
 	var account: String = _usernames[peer]
-	var err := _accounts().create_character(account, p_name)
+	var err := _accounts().create_character(account, p_name, race)
 	_characters_result.rpc_id(peer, _accounts().list_characters(account), err)
 
 
@@ -187,13 +195,16 @@ func _request_enter_world(p_name) -> void:
 	if not _accounts().has_character(account, p_name):
 		_characters_result.rpc_id(peer, _accounts().list_characters(account), "No character called %s." % p_name)
 		return
+	var race := Races.DEFAULT
 	for character in _accounts().list_characters(account):
 		if str(character["name"]).to_lower() == p_name.to_lower():
 			p_name = character["name"]
+			race = character["race"]
 	_in_world[peer] = p_name
-	print("Peer %d entered the world as %s" % [peer, p_name])
+	_races[peer] = race
+	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.display_name(race)])
 	_entered_world.rpc_id(peer, p_name)
-	player_entered.emit(peer, p_name)
+	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
 
 
@@ -285,6 +296,7 @@ func _remove_from_world(peer: int) -> void:
 		return
 	print("Peer %d (%s) left the world" % [peer, _in_world[peer]])
 	_in_world.erase(peer)
+	_races.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
 

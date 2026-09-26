@@ -21,6 +21,7 @@ extends Control
 
 const WORLD_SCENE := preload("res://scenes/test_world.tscn")
 const AccountStore := preload("res://scripts/account_store.gd")
+const Races := preload("res://scripts/races.gd")
 
 @onready var _menu: Control = %Menu
 @onready var _login: Control = %Login
@@ -32,6 +33,9 @@ const AccountStore := preload("res://scripts/account_store.gd")
 @onready var _username: LineEdit = %Username
 @onready var _password: LineEdit = %Password
 @onready var _character_list: ItemList = %CharacterList
+@onready var _race_picker: HBoxContainer = %RacePicker
+@onready var _race_info: Label = %RaceInfo
+@onready var _preview: SubViewportContainer = %Preview
 @onready var _new_character_name: LineEdit = %NewCharacterName
 @onready var _delete_confirm: ConfirmationDialog = %DeleteConfirm
 @onready var _status: Label = %Status
@@ -41,6 +45,10 @@ const AccountStore := preload("res://scripts/account_store.gd")
 var _world: Node
 ## True while a login or register request is waiting for the server.
 var _login_pending := false
+## Race for the next new character.
+var _new_race := Races.DEFAULT
+## Name of the character just created, to select it once the list arrives.
+var _created_name := ""
 
 
 func _ready() -> void:
@@ -60,7 +68,8 @@ func _ready() -> void:
 	_new_character_name.text_submitted.connect(func(_text: String) -> void: _on_create_character_pressed())
 	%PlayButton.pressed.connect(_on_play_pressed)
 	_character_list.item_activated.connect(func(_index: int) -> void: _on_play_pressed())
-	_character_list.item_selected.connect(func(_index: int) -> void: _update_character_buttons())
+	_character_list.item_selected.connect(func(_index: int) -> void: _on_character_selected())
+	_build_race_picker()
 	%DeleteCharacterButton.pressed.connect(_on_delete_character_pressed)
 	_delete_confirm.confirmed.connect(_on_delete_confirmed)
 	%LogoutButton.pressed.connect(_on_logout_pressed)
@@ -184,19 +193,62 @@ func _is_connected() -> bool:
 # --- Character select -------------------------------------------------------
 
 func _on_characters_changed(characters: Array, message: String) -> void:
-	var previous := _selected_character()
+	var previous := _selected_character() if _created_name == "" else _created_name
+	_created_name = ""
 	_character_list.clear()
 	for character in characters:
-		var index := _character_list.add_item(character["name"])
-		if character["name"] == previous:
+		var race: String = character.get("race", Races.DEFAULT)
+		var index := _character_list.add_item("%s   %s" % [character["name"], Races.display_name(race)])
+		_character_list.set_item_metadata(index, character)
+		if str(character["name"]).to_lower() == previous.to_lower():
 			_character_list.select(index)
 	if not _character_list.is_anything_selected() and _character_list.item_count > 0:
 		_character_list.select(_character_list.item_count - 1)
 	if message != "":
 		_status.text = message
 	elif characters.is_empty():
-		_status.text = "Create a character to start playing."
+		_status.text = "Pick a race and name to create a character."
+	_on_character_selected()
+
+
+func _on_character_selected() -> void:
+	var selected := _character_list.get_selected_items()
+	if selected.is_empty():
+		_show_race(_new_race)
+	else:
+		var character: Dictionary = _character_list.get_item_metadata(selected[0])
+		var race: String = character.get("race", Races.DEFAULT)
+		_preview.show_race(race)
+		_race_info.text = "%s the %s" % [character["name"], Races.display_name(race)]
 	_update_character_buttons()
+
+
+## One toggle button per race for the next new character.
+func _build_race_picker() -> void:
+	var group := ButtonGroup.new()
+	for race in Races.IDS:
+		var button := Button.new()
+		button.text = Races.display_name(race)
+		button.toggle_mode = true
+		button.button_group = group
+		button.button_pressed = race == _new_race
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.tooltip_text = Races.INFO[race]["description"]
+		button.pressed.connect(_on_race_picked.bind(race))
+		_race_picker.add_child(button)
+
+
+func _on_race_picked(race: String) -> void:
+	_new_race = race
+	_character_list.deselect_all()
+	_show_race(race)
+	_update_character_buttons()
+	_new_character_name.grab_focus()
+
+
+func _show_race(race: String) -> void:
+	_preview.show_race(race)
+	_race_info.text = "%s: %s" % [Races.display_name(race), Races.INFO[race]["description"]]
 
 
 func _on_create_character_pressed() -> void:
@@ -205,7 +257,8 @@ func _on_create_character_pressed() -> void:
 		_status.text = "Type a name for the new character."
 		return
 	_new_character_name.clear()
-	Session.create_character(character_name)
+	_created_name = character_name
+	Session.create_character(character_name, _new_race)
 
 
 func _on_play_pressed() -> void:
@@ -237,7 +290,7 @@ func _on_logout_pressed() -> void:
 
 func _selected_character() -> String:
 	var selected := _character_list.get_selected_items()
-	return _character_list.get_item_text(selected[0]) if not selected.is_empty() else ""
+	return _character_list.get_item_metadata(selected[0])["name"] if not selected.is_empty() else ""
 
 
 func _update_character_buttons() -> void:
