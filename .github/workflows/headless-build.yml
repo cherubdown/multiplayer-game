@@ -66,6 +66,11 @@ jobs:
         env:
           GODOT: godot
 
+      - name: Run tests
+        run: .github/scripts/run-tests.sh
+        env:
+          GODOT: godot
+
       - name: Upload Windows client build
         uses: actions/upload-artifact@v4
         with:

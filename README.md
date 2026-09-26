@@ -34,9 +34,15 @@ Godot_v4.3-stable_win64_console.exe --headless --path . --export-release "Window
 
 Both presets leave "Modify Resources" off so they export without rcedit. Turn it on in the export dialog if you want a custom .exe icon and version info.
 
+## Accounts and characters
+
+After you host or join, you log in to that server. The first time, type a username and password and press **Create account**; after that, **Log in**. Then the character select screen lets you create up to 5 characters, delete them, and pick one with **Play** (or double-click it) to enter the world.
+
+Accounts belong to the server, not to your PC: the host (or dedicated server) keeps every account and its characters in `accounts.json` in its user data folder, which on Windows is `%APPDATA%\Godot\app_userdata\Multiplayer Survival Game\` (the server prints the full path when the first player logs in). Pass `--accounts=<path>` to the host or server to keep them somewhere else. Passwords are stored as salted PBKDF2-SHA256 hashes, but they cross the network unencrypted, so don't reuse a password you care about.
+
 ## Playing
 
-Hosting or joining drops you into a flat test world. Move with WASD or the arrow keys, jump with Space, and look around with the mouse. Esc shows the menu (with Leave) and frees the mouse; click to go back in.
+Once you pick a character you're in a flat test world. Move with WASD or the arrow keys, jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
 To try two players on one machine, start one copy with `--host` and another with `--join=127.0.0.1`.
 
@@ -45,7 +51,10 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 ## Layout
 
 - `scripts/network.gd` is the `Network` autoload that owns the `ENetMultiplayerPeer` and the three launch modes.
-- `scenes/main.tscn` with `scripts/main.gd` is the entry scene: it reads the flags, or shows the Host / Join menu and a lobby of connected players.
+- `scenes/main.tscn` with `scripts/main.gd` is the entry scene: it reads the flags, or shows the Host / Join menu, then the login and character select screens, and in game a list of who is playing.
+- `scripts/session.gd` is the `Session` autoload: the login, character and enter-world requests clients send to the server, and the server's record of who is logged in and who is in the world.
+- `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes and characters on the server.
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the flat test world. On the server it spawns a player per peer through a `MultiplayerSpawner`.
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
+- `tests/` has headless tests for the account store and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.
