@@ -19,6 +19,21 @@ jobs:
     name: Godot import and export
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      # Throwaway database for the account tests; the password is CI-only.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: game
+          POSTGRES_USER: game
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U game -d game"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +85,7 @@ jobs:
         run: .github/scripts/run-tests.sh
         env:
           GODOT: godot
+          DATABASE_URL: postgres://game:ci-only-password@127.0.0.1:5432/game
 
       - name: Upload Windows client build
         uses: actions/upload-artifact@v4

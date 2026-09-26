@@ -18,3 +18,6 @@ mono_crash.*.json
 *.x86_64
 *.exe
 *.pck
+
+# Local secrets (database passwords)
+.env

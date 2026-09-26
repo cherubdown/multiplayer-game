@@ -24,6 +24,20 @@ func _init(p_path: String = DEFAULT_PATH) -> void:
 	_load()
 
 
+## Nothing to connect to; the file is read when the store is made.
+func open() -> String:
+	return ""
+
+
+func close() -> void:
+	pass
+
+
+## Where the accounts live, for the server log.
+func describe() -> String:
+	return ProjectSettings.globalize_path(path)
+
+
 func has_account(username: String) -> bool:
 	return _accounts.has(username.to_lower())
 

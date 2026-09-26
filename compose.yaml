@@ -1,0 +1,25 @@
+# Local PostgreSQL for the dedicated server's accounts. Needs Docker Desktop.
+# Copy .env.example to .env and set POSTGRES_PASSWORD first, then:
+#   docker compose up -d
+# See "Accounts database" in README.md.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: game
+      POSTGRES_USER: game
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set POSTGRES_PASSWORD}
+    ports:
+      # Only this PC can reach it; the game server connects on localhost.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U game -d game"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

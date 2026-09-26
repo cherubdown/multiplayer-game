@@ -94,6 +94,10 @@ func _launch_from_args(args: Dictionary) -> void:
 	elif args.has("server") or OS.has_feature("dedicated_server") or headless:
 		if not args.has("server"):
 			print("No launch flag given in a headless or server build; starting a dedicated server.")
+		# Fail fast on a bad DATABASE_URL rather than when the first player logs in.
+		if await Session.open_accounts() != "":
+			get_tree().quit(1)
+			return
 		if Network.start_dedicated_server(port) != OK:
 			get_tree().quit(1)
 			return
