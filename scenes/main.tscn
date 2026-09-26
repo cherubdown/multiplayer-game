@@ -67,6 +67,106 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Join"
 
+[node name="Login" type="VBoxContainer" parent="Center/Panel/Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LoginHint" type="Label" parent="Center/Panel/Margin/VBox/Login"]
+layout_mode = 2
+text = "Log in, or create an account on this server."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Username" type="LineEdit" parent="Center/Panel/Margin/VBox/Login"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Username"
+max_length = 16
+
+[node name="Password" type="LineEdit" parent="Center/Panel/Margin/VBox/Login"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Password"
+max_length = 64
+secret = true
+
+[node name="LoginButtons" type="HBoxContainer" parent="Center/Panel/Margin/VBox/Login"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LoginButton" type="Button" parent="Center/Panel/Margin/VBox/Login/LoginButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Log in"
+
+[node name="RegisterButton" type="Button" parent="Center/Panel/Margin/VBox/Login/LoginButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Create account"
+
+[node name="DisconnectButton" type="Button" parent="Center/Panel/Margin/VBox/Login"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Disconnect"
+
+[node name="CharacterSelect" type="VBoxContainer" parent="Center/Panel/Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AccountLabel" type="Label" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Choose a character"
+horizontal_alignment = 1
+
+[node name="CharacterList" type="ItemList" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+
+[node name="NewCharacter" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NewCharacterName" type="LineEdit" parent="Center/Panel/Margin/VBox/CharacterSelect/NewCharacter"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "New character name"
+max_length = 16
+
+[node name="CreateCharacterButton" type="Button" parent="Center/Panel/Margin/VBox/CharacterSelect/NewCharacter"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Create"
+
+[node name="CharacterButtons" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PlayButton" type="Button" parent="Center/Panel/Margin/VBox/CharacterSelect/CharacterButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Play"
+
+[node name="DeleteCharacterButton" type="Button" parent="Center/Panel/Margin/VBox/CharacterSelect/CharacterButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Delete"
+
+[node name="LogoutButton" type="Button" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Log out"
+
 [node name="Lobby" type="VBoxContainer" parent="Center/Panel/Margin/VBox"]
 unique_name_in_owner = true
 visible = false
@@ -76,6 +176,11 @@ theme_override_constants/separation = 8
 [node name="Players" type="Label" parent="Center/Panel/Margin/VBox/Lobby"]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="CharacterSelectButton" type="Button" parent="Center/Panel/Margin/VBox/Lobby"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Character select"
 
 [node name="LeaveButton" type="Button" parent="Center/Panel/Margin/VBox/Lobby"]
 unique_name_in_owner = true
@@ -88,3 +193,8 @@ layout_mode = 2
 text = "Offline"
 horizontal_alignment = 1
 autowrap_mode = 3
+
+[node name="DeleteConfirm" type="ConfirmationDialog" parent="."]
+unique_name_in_owner = true
+title = "Delete character"
+ok_button_text = "Delete"

@@ -14,6 +14,9 @@ const TURN_SPEED := 10.0
 @onready var camera: Camera3D = $CameraPivot/SpringArm3D/Camera3D
 @onready var camera_pivot: Node3D = $CameraPivot
 
+## Set by the server before spawning; replicated once at spawn time.
+@export var character_name := ""
+
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -26,11 +29,19 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	var is_local := $PlayerInput.is_multiplayer_authority()
 	camera.current = is_local
+	$Nameplate.text = character_name
+	$Nameplate.visible = not is_local
+	if is_local:
+		Session.leaving_world.connect(_on_leaving_world)
 	# Local player gets a different color so you can tell yourself apart.
 	if is_local:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.2, 0.6, 1.0)
 		$Body.material_override = mat
+
+
+func _on_leaving_world() -> void:
+	$PlayerInput/InputSynchronizer.public_visibility = false
 
 
 func _process(_delta: float) -> void:
