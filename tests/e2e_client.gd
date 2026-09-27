@@ -9,6 +9,7 @@ extends SceneTree
 ## that the server spawns the player into the world with its race. Exits non-zero on failure.
 ## Against a server started with --server-password=<password>, pass the same
 ## flag: the test first checks a wrong password is turned away.
+## Pass --expect-seed=<text> to check the server sends that world seed.
 
 var _failures := 0
 
@@ -23,11 +24,14 @@ func _run() -> void:
 	var port := 7790
 	var as_host := false
 	var server_password := ""
+	var expect_seed := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--port="):
 			port = int(arg.get_slice("=", 1))
 		if arg.begins_with("--server-password="):
 			server_password = arg.substr(arg.find("=") + 1)
+		if arg.begins_with("--expect-seed="):
+			expect_seed = arg.substr(arg.find("=") + 1)
 		as_host = as_host or arg == "--host"
 	var world: Node = load("res://scenes/test_world.tscn").instantiate()
 	# Same path as on the server (child of the Main scene root).
@@ -38,6 +42,8 @@ func _run() -> void:
 
 	if as_host:
 		network.host(port)
+		session.open_accounts()
+		session.setup_world(expect_seed)
 	else:
 		if server_password != "":
 			# Only returns once the server turns us away.
@@ -45,6 +51,12 @@ func _run() -> void:
 			_check(network.mode == network.Mode.OFFLINE, "wrong server password is turned away")
 		network.join("127.0.0.1", port, server_password)
 		await root.multiplayer.connected_to_server
+	while session.world_seed == "":
+		await process_frame
+	_check(expect_seed == "" or session.world_seed == expect_seed,
+		"got the world seed \"%s\" (expected \"%s\")" % [session.world_seed, expect_seed])
+	var terrain: Node = world.get_node("Terrain")
+	_check(terrain.gen != null and terrain.gen.seed_text == session.world_seed, "built the terrain from the seed")
 	var user := "e2e_%d" % (randi() % 100000)
 
 	var result: Array = await _call_and_wait(session.login_finished, session.login.bind(user, "password1"))
@@ -69,6 +81,12 @@ func _run() -> void:
 	_check(player != null, "server spawned our player")
 	_check(player != null and player.character_name == "Ragnar", "player carries the character name")
 	_check(player != null and player.race == "dwarf", "player carries the character's race")
+	# Give the server time to drop the player onto the ground.
+	await create_timer(1.5).timeout
+	if player != null:
+		var ground: float = terrain.ground_height(player.position.x, player.position.z)
+		_check(absf(player.position.y - ground) < 1.5,
+			"player stands on the ground (y %.2f, ground %.2f)" % [player.position.y, ground])
 
 	await _call_and_wait(session.left_world, session.leave_world)
 	await create_timer(0.5).timeout

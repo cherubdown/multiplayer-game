@@ -9,6 +9,10 @@ extends Control
 ## Add --server-password=<password> to any of them: servers then only let in
 ## clients that send it, and clients send it when joining.
 ##
+## A server (dedicated or host) generates its world from a seed the first time
+## it starts: --seed=<any text>, or a random one if not given. The seed is
+## saved with the accounts, so later starts load the same world.
+##
 ## Flags may also be passed after "--" (user args), e.g. "godot -- --host".
 ##
 ## After hosting or joining, players log in (or create an account) and then pick,
@@ -30,6 +34,7 @@ const Races := preload("res://scripts/races.gd")
 @onready var _address: LineEdit = %Address
 @onready var _port: SpinBox = %Port
 @onready var _server_password: LineEdit = %ServerPassword
+@onready var _world_seed: LineEdit = %WorldSeed
 @onready var _username: LineEdit = %Username
 @onready var _password: LineEdit = %Password
 @onready var _character_list: ItemList = %CharacterList
@@ -98,6 +103,7 @@ func _launch_from_args(args: Dictionary) -> void:
 	var headless := DisplayServer.get_name() == "headless"
 	var server_password: String = args.get("server-password", "")
 	_server_password.text = server_password
+	_world_seed.text = args.get("seed", "")
 
 	if args.has("host"):
 		if Network.host(port, server_password) == OK:
@@ -343,8 +349,9 @@ func _unhandled_input(event: InputEvent) -> void:
 ## replicates players into it.
 func _start_game() -> void:
 	if multiplayer.is_server():
-		# Creates the accounts database on a server's first start.
+		# Creates the accounts database, and the world, on a server's first start.
 		Session.open_accounts()
+		Session.setup_world(_world_seed.text)
 	if _world == null:
 		_world = WORLD_SCENE.instantiate()
 		add_child(_world)

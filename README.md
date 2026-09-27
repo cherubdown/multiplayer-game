@@ -20,6 +20,29 @@ To keep strangers out, give the server a password with `--server-password=<passw
 
 Use the `_console.exe` build for the dedicated server so its log prints in the terminal. Flags can also go after `--` (for example `... --path . -- --host`), which keeps Godot from warning about arguments it doesn't know. Running headless, or a dedicated server export, starts a dedicated server even without `--server`.
 
+## The world
+
+Each server plays on one island, generated from a **world seed**: any text, like `--seed="Chris's world"`. The same seed always makes the same island, with the same biomes, hills and trees, on every PC. The world is created the first time a server (or host) starts:
+
+```
+Godot_v4.7.2-stable_win64_console.exe --headless --path . --server --seed="Chris's world"
+```
+
+Without `--seed` the server makes up a random seed such as `raven-elder-5319` and prints it. When hosting from the menu, type the seed in the **World seed** box before pressing **Host**. The seed is saved in the server's `accounts.db`, so every later start loads the same world; a different `--seed` after that is ignored with a warning. To start over with a new world, stop the server and delete `accounts.db` (which also deletes the accounts). Clients never need the seed: the server sends it when they connect and each client builds the island itself.
+
+The island is 1 km across and ringed by ocean. Like Valheim, it gets harsher away from the middle:
+
+| Biome | Where |
+| :--- | :--- |
+| Meadows | The calm middle, where everyone spawns. Grass, scattered leafy trees. |
+| Black Forest | The ring around the Meadows. Dense pines. |
+| Swamp | Flat, soggy patches between the Meadows and the coast, with dead trees. |
+| Plains | Dry, open land near the coast, with rocks. |
+| Mountains | Wherever the land rises high, with snow on the peaks. |
+| Ocean | Around the edge, and in lakes inland. |
+
+Trees and rocks are scenery for now: you can walk through them.
+
 The first time you host or run a server, Windows Firewall asks whether to allow Godot on the network. Allow it on private networks, and forward UDP port 7777 on your router if friends join over the internet.
 
 ## Exporting for Windows
@@ -52,7 +75,7 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 ## Playing
 
-Once you pick a character you're in a flat test world. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
+Once you pick a character you're on the island, in the Meadows. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
 To try two players on one machine, start one copy with `--host` and another with `--join=127.0.0.1`.
 
@@ -63,10 +86,11 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 - `scripts/network.gd` is the `Network` autoload that owns the `ENetMultiplayerPeer` and the three launch modes.
 - `scenes/main.tscn` with `scripts/main.gd` is the entry scene: it reads the flags, or shows the Host / Join menu, then the login and character select screens, and in game a list of who is playing.
 - `scripts/session.gd` is the `Session` autoload: the login, character and enter-world requests clients send to the server, and the server's record of who is logged in and who is in the world.
-- `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes and characters on the server in SQLite, creating and upgrading the tables as needed.
+- `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes, characters and the world seed on the server in SQLite, creating and upgrading the tables as needed.
 - `addons/godot-sqlite/` is the vendored SQLite extension.
-- `scenes/test_world.tscn` with `scripts/test_world.gd` is the flat test world. On the server it spawns a player per peer through a `MultiplayerSpawner`.
+- `scenes/test_world.tscn` with `scripts/test_world.gd` is the game world. It builds the terrain once the world seed is known, and on the server spawns a player per peer through a `MultiplayerSpawner`.
+- `scripts/world_gen.gd` turns a seed into the island's heights and biomes (deterministic noise, so every peer agrees). `scripts/terrain.gd` builds the ground collision from it, plus the biome-colored ground, sea, trees and rocks on peers that draw.
 - `scripts/races.gd` defines the races; `scripts/character_model.gd` builds and animates a race's model, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
-- `tests/` has headless tests for the account store and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
+- `tests/` has headless tests for the account store, the world generator and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.

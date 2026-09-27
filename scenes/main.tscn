@@ -64,6 +64,12 @@ layout_mode = 2
 placeholder_text = "Server password (optional)"
 secret = true
 
+[node name="WorldSeed" type="LineEdit" parent="Center/Panel/Margin/VBox/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "World seed for a new world (optional)"
+tooltip_text = "Only used the first time you host: the world is generated from this text and saved. Leave empty for a random world."
+
 [node name="HostButton" type="Button" parent="Center/Panel/Margin/VBox/Menu"]
 unique_name_in_owner = true
 layout_mode = 2

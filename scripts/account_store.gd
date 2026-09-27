@@ -1,6 +1,6 @@
 extends RefCounted
-## Server-side accounts and characters, saved in a SQLite database
-## (user://accounts.db by default). The database and its tables are created
+## Server-side accounts, characters and world settings (the world seed),
+## saved in a SQLite database (user://accounts.db by default). The database and its tables are created
 ## the first time the server needs them, so a new server needs no setup.
 ## Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes.
 ##
@@ -16,7 +16,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -121,6 +121,26 @@ func delete_character(username: String, character_name: String) -> String:
 		"DELETE FROM characters WHERE account_id = ? AND name_key = ?",
 		[account["id"], character_name.strip_edges().to_lower()])
 	return "" if ok else _failed("delete character %s" % character_name)
+
+
+## The seed this server's world was created with, or "" before the world
+## exists.
+func world_seed() -> String:
+	if not is_open():
+		return ""
+	_db.query("SELECT value FROM world WHERE key = 'seed'")
+	return str(_db.query_result[0]["value"]) if _db.query_result.size() > 0 else ""
+
+
+## Saves the seed of a new world. Returns false if it could not be saved.
+func set_world_seed(seed_text: String) -> bool:
+	if not is_open():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"INSERT OR REPLACE INTO world (key, value) VALUES ('seed', ?)", [seed_text])
+	if not ok:
+		push_error("Could not save the world seed in %s: %s" % [path, _db.error_message])
+	return ok
 
 
 ## The account row for a username, or {} if there is none.
@@ -240,6 +260,21 @@ func _migrate() -> bool:
 		""" % Races.DEFAULT)
 		if not ok:
 			push_error("Could not add character races to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 3:
+		# Settings of the world this server hosts, such as its seed.
+		var ok: bool = _db.query("""
+			BEGIN;
+			CREATE TABLE world (
+				key TEXT PRIMARY KEY,
+				value TEXT NOT NULL
+			);
+			PRAGMA user_version = 3;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add the world table to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

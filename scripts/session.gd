@@ -23,6 +23,10 @@ signal roster_changed(roster: Dictionary)
 ## stops syncing its input so none arrives after the server despawns it.
 signal leaving_world
 
+## Every peer: the world seed is known (or changed). The world is generated
+## from it; see scripts/world_gen.gd.
+signal world_seed_changed(seed_text: String)
+
 ## Server side: spawn or despawn this peer's player.
 signal player_entered(peer_id: int, character_name: String, race: String)
 signal player_left(peer_id: int)
@@ -31,6 +35,7 @@ signal player_left(peer_id: int)
 # hasn't been imported in the editor (no global class cache yet).
 const AccountStore := preload("res://scripts/account_store.gd")
 const Races := preload("res://scripts/races.gd")
+const WorldGen := preload("res://scripts/world_gen.gd")
 const MAX_FAILED_LOGINS := 5
 
 ## Client side state.
@@ -38,6 +43,8 @@ var username := ""
 var characters: Array = []
 var character_name := ""
 var roster := {}
+## Every peer: the seed of the world being played, "" until the server says.
+var world_seed := ""
 
 ## Server side state.
 var _store: AccountStore
@@ -48,6 +55,7 @@ var _failed_logins := {}      # peer id -> count
 
 
 func _ready() -> void:
+	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 
@@ -71,6 +79,7 @@ func reset() -> void:
 	characters = []
 	character_name = ""
 	roster = {}
+	world_seed = ""
 	_usernames.clear()
 	_in_world.clear()
 	_races.clear()
@@ -220,6 +229,12 @@ func _request_leave_world() -> void:
 # --- Client side answers ----------------------------------------------------
 
 @rpc("authority", "call_local", "reliable")
+func _set_world_seed(seed_text: String) -> void:
+	world_seed = seed_text
+	world_seed_changed.emit(seed_text)
+
+
+@rpc("authority", "call_local", "reliable")
 func _login_result(ok: bool, message: String, p_username: String, p_characters: Array) -> void:
 	if ok:
 		username = p_username
@@ -259,6 +274,28 @@ func _set_roster(p_roster: Dictionary) -> void:
 ## problems show up when the server starts rather than at the first login.
 func open_accounts() -> void:
 	_accounts()
+
+
+## Server side: picks the world seed. A new server creates its world from
+## `requested` (from --seed), or a random seed if that is "", and saves it.
+## After that the saved seed always wins, so the world never changes under
+## existing players.
+func setup_world(requested: String) -> void:
+	requested = requested.strip_edges()
+	var saved := _accounts().world_seed()
+	var chosen := saved
+	if saved != "":
+		if requested != "" and requested != saved:
+			push_warning("Ignoring --seed=\"%s\": this server's world already exists with seed \"%s\". Delete %s to start a new world." \
+				% [requested, saved, ProjectSettings.globalize_path(_accounts().path)])
+		print("Loaded the world with seed \"%s\"" % saved)
+	else:
+		chosen = requested if requested != "" else WorldGen.random_seed()
+		if _accounts().set_world_seed(chosen):
+			print("Created a new world with seed \"%s\"%s" % [chosen, "" if requested != "" else " (random; pass --seed=<text> to pick one)"])
+		else:
+			push_warning("Could not save the world seed \"%s\"; the next start will make a different world." % chosen)
+	_set_world_seed(chosen)
 
 
 func _accounts() -> AccountStore:
@@ -305,6 +342,12 @@ func _broadcast_roster() -> void:
 	# Only peers that have logged in hear about who is playing.
 	for peer in _usernames:
 		_set_roster.rpc_id(peer, _in_world)
+
+
+func _on_peer_connected(peer: int) -> void:
+	# Clients build the world while they log in.
+	if multiplayer.is_server() and world_seed != "":
+		_set_world_seed.rpc_id(peer, world_seed)
 
 
 func _on_peer_disconnected(peer: int) -> void:

@@ -15,8 +15,8 @@ echo "::group::Dedicated server from a fresh checkout (no import)"
 fresh="$(mktemp -d)"
 git ls-files -z | xargs -0 cp --parents -t "$fresh"
 fresh_log="$(mktemp)"
-timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --accounts=user://test_fresh_accounts.db --quit-after 60 2>&1 | tee "$fresh_log"
-rm -rf "$fresh"
+rm -f "$HOME/.local/share/godot/app_userdata/Multiplayer Survival Game/test_fresh_accounts.db"
+timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --accounts=user://test_fresh_accounts.db --seed="first seed" --quit-after 60 2>&1 | tee "$fresh_log"
 echo "::endgroup::"
 if grep -E 'SCRIPT ERROR|Parse Error|Failed to load script|ERROR:' "$fresh_log" >/dev/null; then
   echo "::error::The dedicated server hits errors on a fresh checkout that hasn't been imported."
@@ -26,6 +26,24 @@ if ! grep -q "Accounts are saved in" "$fresh_log"; then
   echo "::error::The dedicated server didn't open its accounts database on a fresh checkout."
   exit 1
 fi
+if ! grep -q 'Created a new world with seed "first seed"' "$fresh_log"; then
+  echo "::error::The dedicated server didn't create its world from --seed on first start."
+  exit 1
+fi
+
+echo "::group::Restarting keeps the saved world seed"
+restart_log="$(mktemp)"
+timeout 60 "$GODOT" --headless --path "$fresh" --server --port="$PORT" --accounts=user://test_fresh_accounts.db --seed="other seed" --quit-after 60 2>&1 | tee "$restart_log"
+rm -rf "$fresh"
+echo "::endgroup::"
+if ! grep -q 'Loaded the world with seed "first seed"' "$restart_log" || ! grep -q 'Ignoring --seed="other seed"' "$restart_log"; then
+  echo "::error::A restarted server didn't keep its saved world seed."
+  exit 1
+fi
+
+echo "::group::WorldGen"
+"$GODOT" --headless --path . -s tests/test_world_gen.gd
+echo "::endgroup::"
 
 echo "::group::AccountStore"
 "$GODOT" --headless --path . -s tests/test_account_store.gd
@@ -37,14 +55,15 @@ echo "::endgroup::"
 
 echo "::group::Joining a dedicated server that has no password"
 open_log="$(mktemp)"
-timeout 60 "$GODOT" --headless --path . --server --port="$((PORT + 2))" --accounts=user://test_open_accounts.db >"$open_log" 2>&1 &
+rm -f "$HOME/.local/share/godot/app_userdata/Multiplayer Survival Game/test_open_accounts.db"
+timeout 60 "$GODOT" --headless --path . --server --port="$((PORT + 2))" --accounts=user://test_open_accounts.db --seed="open world" >"$open_log" 2>&1 &
 open_pid=$!
 for _ in $(seq 1 30); do
   grep -q "Dedicated server listening" "$open_log" && break
   sleep 1
 done
 status=0
-timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --port="$((PORT + 2))" || status=$?
+timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --port="$((PORT + 2))" --expect-seed="open world" || status=$?
 kill "$open_pid" 2>/dev/null || true
 wait "$open_pid" 2>/dev/null || true
 echo "::endgroup::"
