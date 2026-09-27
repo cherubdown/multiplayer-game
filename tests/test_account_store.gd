@@ -51,12 +51,26 @@ func _init() -> void:
 	_check(raw.contains("Ragnar".to_utf8_buffer().hex_encode()), "database was written")
 	_check(not raw.contains("secret1".to_utf8_buffer().hex_encode()), "password is not stored in plain text")
 
+	_check_world_seed()
 	_check_legacy_import()
 	_check_race_migration()
 
 	_remove_test_files()
 	print("AccountStore: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
 	quit(1 if _failures > 0 else 0)
+
+
+## The world seed is saved once and read back after a restart, including
+## seeds with quotes and spaces.
+func _check_world_seed() -> void:
+	_remove_test_files()
+	var store := AccountStore.new(PATH)
+	_check(store.world_seed() == "", "a new database has no world seed")
+	_check(store.set_world_seed("Chris's \"big\" world"), "saves a world seed")
+	store.close()
+	var reloaded := AccountStore.new(PATH)
+	_check(reloaded.world_seed() == "Chris's \"big\" world", "world seed survives a reload")
+	reloaded.close()
 
 
 ## Accounts from an accounts.json written by older builds move into a new
@@ -114,6 +128,7 @@ func _check_race_migration() -> void:
 	var characters := store.list_characters("old")
 	_check(characters.size() == 1 and characters[0]["race"] == "human", "old characters become humans")
 	_check(store.create_character("old", "Galadriel", "elf") == "", "migrated database takes new races")
+	_check(store.world_seed() == "" and store.set_world_seed("old world"), "migrated database can save a world seed")
 	store.close()
 
 
