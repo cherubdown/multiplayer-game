@@ -77,6 +77,14 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 Once you pick a character you're on the island, in the Meadows. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
+### Items and chests
+
+Every character has a 20-slot inventory. Press **Tab** (or **I**) to look at it. Walk up to an item lying on the ground until a prompt appears, then press **E** to pick it up. Items of the same kind stack, up to 50 in a slot.
+
+Next to the spawn point there is a test chest, with some wood, stone, flint and raspberries scattered around it. Walk up to the chest and press **E** to open it: your inventory and the chest show side by side, and clicking a stack moves it to the other side. Press **E**, **Tab** or **Esc** to close it. Picked up test items come back after a minute, so there's always something to try.
+
+The server owns every inventory and chest; clients only ask it to move things. Inventories are saved with each character and the chest's contents with the world, both in `accounts.db`, so they survive a restart. `scripts/items.gd` lists the kinds of items.
+
 To try two players on one machine, start one copy with `--host` and another with `--join=127.0.0.1`.
 
 Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never load the models, so they still start from a checkout that was never opened in the editor, and the dedicated server export leaves them out.

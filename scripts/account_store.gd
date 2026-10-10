@@ -1,6 +1,6 @@
 extends RefCounted
-## Server-side accounts, characters and world settings (the world seed),
-## saved in a SQLite database (user://accounts.db by default). The database and its tables are created
+## Server-side accounts, characters (with their inventories) and the world
+## (its seed and what is in its chests), saved in a SQLite database (user://accounts.db by default). The database and its tables are created
 ## the first time the server needs them, so a new server needs no setup.
 ## Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes.
 ##
@@ -16,7 +16,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -140,6 +140,55 @@ func set_world_seed(seed_text: String) -> bool:
 		"INSERT OR REPLACE INTO world (key, value) VALUES ('seed', ?)", [seed_text])
 	if not ok:
 		push_error("Could not save the world seed in %s: %s" % [path, _db.error_message])
+	return ok
+
+
+## A character's saved inventory, as slots for Inventory.load_array(), or []
+## if there is none.
+func load_inventory(username: String, character_name: String) -> Array:
+	if not is_open():
+		return []
+	_db.query_with_bindings(
+		"SELECT c.inventory FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty():
+		return []
+	var slots = JSON.parse_string(str(_db.query_result[0]["inventory"]))
+	return slots if slots is Array else []
+
+
+## Saves a character's inventory slots (Inventory.to_array()).
+func save_inventory(username: String, character_name: String, slots: Array) -> bool:
+	var account := _account(username)
+	if account.is_empty():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET inventory = ? WHERE account_id = ? AND name_key = ?",
+		[JSON.stringify(slots), account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's inventory in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
+## What is in one of the world's chests, as slots for Inventory.load_array(),
+## or [] for a chest that has never been used.
+func load_chest(chest_id: String) -> Array:
+	if not is_open():
+		return []
+	_db.query_with_bindings("SELECT value FROM world WHERE key = ?", ["chest:" + chest_id])
+	if _db.query_result.is_empty():
+		return []
+	var slots = JSON.parse_string(str(_db.query_result[0]["value"]))
+	return slots if slots is Array else []
+
+
+func save_chest(chest_id: String, slots: Array) -> bool:
+	if not is_open():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"INSERT OR REPLACE INTO world (key, value) VALUES (?, ?)", ["chest:" + chest_id, JSON.stringify(slots)])
+	if not ok:
+		push_error("Could not save chest %s in %s: %s" % [chest_id, path, _db.error_message])
 	return ok
 
 
@@ -275,6 +324,18 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add the world table to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 4:
+		# Each character's inventory, as JSON slots (see scripts/inventory.gd).
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN inventory TEXT NOT NULL DEFAULT '[]';
+			PRAGMA user_version = 4;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add inventories to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true
