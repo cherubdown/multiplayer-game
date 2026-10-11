@@ -49,6 +49,10 @@ echo "::group::AccountStore"
 "$GODOT" --headless --path . -s tests/test_account_store.gd
 echo "::endgroup::"
 
+echo "::group::Inventory"
+"$GODOT" --headless --path . -s tests/test_inventory.gd
+echo "::endgroup::"
+
 echo "::group::Login and character select against a listen-server host"
 timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.db
 echo "::endgroup::"

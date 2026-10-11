@@ -23,6 +23,9 @@ signal roster_changed(roster: Dictionary)
 ## stops syncing its input so none arrives after the server despawns it.
 signal leaving_world
 
+## Client side: the server sent this client's inventory (Inventory slots).
+signal inventory_changed(slots: Array)
+
 ## Every peer: the world seed is known (or changed). The world is generated
 ## from it; see scripts/world_gen.gd.
 signal world_seed_changed(seed_text: String)
@@ -36,13 +39,18 @@ signal player_left(peer_id: int)
 const AccountStore := preload("res://scripts/account_store.gd")
 const Races := preload("res://scripts/races.gd")
 const WorldGen := preload("res://scripts/world_gen.gd")
+const Inventory := preload("res://scripts/inventory.gd")
 const MAX_FAILED_LOGINS := 5
+## Slots in every character's inventory.
+const INVENTORY_SLOTS := 20
 
 ## Client side state.
 var username := ""
 var characters: Array = []
 var character_name := ""
 var roster := {}
+## The slots of this client's inventory, [] when not in the world.
+var inventory: Array = []
 ## Every peer: the seed of the world being played, "" until the server says.
 var world_seed := ""
 
@@ -51,6 +59,7 @@ var _store: AccountStore
 var _usernames := {}          # peer id -> logged in username (lowercase)
 var _in_world := {}           # peer id -> character name
 var _races := {}              # peer id -> race of the character in the world
+var _inventories := {}        # peer id -> Inventory of the character in the world
 var _failed_logins := {}      # peer id -> count
 
 
@@ -73,16 +82,38 @@ func race_of(peer: int) -> String:
 	return _races.get(peer, Races.DEFAULT)
 
 
+## Server side: the inventory of a peer's character in the world, or null.
+## Call inventory_updated() after changing it.
+func inventory_of(peer: int) -> Inventory:
+	return _inventories.get(peer)
+
+
+## Server side: saves a peer's inventory and sends it to them.
+func inventory_updated(peer: int) -> void:
+	var inv: Inventory = _inventories.get(peer)
+	if inv == null:
+		return
+	_accounts().save_inventory(_usernames[peer], _in_world[peer], inv.to_array())
+	_set_inventory.rpc_id(peer, inv.to_array())
+
+
+## Server side: the database that also holds the world's chests.
+func accounts() -> AccountStore:
+	return _accounts()
+
+
 ## Forgets everything, on both sides. Called when leaving a game.
 func reset() -> void:
 	username = ""
 	characters = []
 	character_name = ""
 	roster = {}
+	inventory = []
 	world_seed = ""
 	_usernames.clear()
 	_in_world.clear()
 	_races.clear()
+	_inventories.clear()
 	_failed_logins.clear()
 
 
@@ -211,8 +242,12 @@ func _request_enter_world(p_name) -> void:
 			race = character["race"]
 	_in_world[peer] = p_name
 	_races[peer] = race
+	var inv := Inventory.new(INVENTORY_SLOTS)
+	inv.load_array(_accounts().load_inventory(account, p_name))
+	_inventories[peer] = inv
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.display_name(race)])
 	_entered_world.rpc_id(peer, p_name)
+	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
 
@@ -257,8 +292,15 @@ func _entered_world(p_name: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _set_inventory(slots: Array) -> void:
+	inventory = slots
+	inventory_changed.emit(slots)
+
+
+@rpc("authority", "call_local", "reliable")
 func _left_world() -> void:
 	character_name = ""
+	inventory = []
 	left_world.emit()
 
 
@@ -332,8 +374,12 @@ func _remove_from_world(peer: int) -> void:
 	if not _in_world.has(peer):
 		return
 	print("Peer %d (%s) left the world" % [peer, _in_world[peer]])
+	# Saved on every change already; this catches anything missed.
+	if _inventories.has(peer):
+		_accounts().save_inventory(_usernames[peer], _in_world[peer], _inventories[peer].to_array())
 	_in_world.erase(peer)
 	_races.erase(peer)
+	_inventories.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
 
