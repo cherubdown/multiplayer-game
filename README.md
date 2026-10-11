@@ -81,7 +81,9 @@ Once you pick a character you're on the island, in the Meadows. Move with WASD o
 
 Every character has a 20-slot inventory. Press **Tab** (or **I**) to look at it. Walk up to an item lying on the ground until a prompt appears, then press **E** to pick it up. Items of the same kind stack, up to 50 in a slot.
 
-Next to the spawn point there is a test chest, with some wood, stone, flint and raspberries scattered around it. Walk up to the chest and press **E** to open it: your inventory and the chest show side by side, and clicking a stack moves it to the other side. Press **E**, **Tab** or **Esc** to close it. Picked up test items come back after a minute, so there's always something to try.
+Every item has an icon; hover over one to see what it is and what it's for. Drag a stack onto another slot to move it: onto the same item it tops that stack up, onto a different item the two swap. Drag a stack off the panel and let go to drop it on the ground in front of you, where anyone can pick it up again with **E**. Dropped items stay until someone picks them up or the server restarts.
+
+Next to the spawn point there is a test chest, with some wood, stone, flint and raspberries scattered around it. Walk up to the chest and press **E** to open it: your inventory and the chest show side by side. Drag stacks between them (or within either one), or click a stack to send it straight to the other side. Press **E**, **Tab** or **Esc** to close it. Picked up test items come back after a minute, so there's always something to try.
 
 The server owns every inventory and chest; clients only ask it to move things. Inventories are saved with each character and the chest's contents with the world, both in `accounts.db`, so they survive a restart. `scripts/items.gd` lists the kinds of items.
 

@@ -9,6 +9,8 @@ extends Node3D
 ## Next to the spawn there's a test chest (on every peer) and some items on
 ## the ground to pick up, which the server spawns and ItemSpawner replicates.
 ## Picked up items come back after a while so there's always something to try.
+## Items players drop lie where they fell until someone picks them up (until
+## the server restarts).
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PICKUP_SCENE := preload("res://scenes/item_pickup.tscn")
@@ -51,6 +53,7 @@ func _ready() -> void:
 		return
 	Session.player_entered.connect(_add_player)
 	Session.player_left.connect(_remove_player)
+	Session.item_dropped.connect(drop_item)
 	var in_world := Session.players_in_world()
 	for id in in_world:
 		_add_player(id, in_world[id], Session.race_of(id))
@@ -72,6 +75,21 @@ func _build_terrain(seed_text: String) -> void:
 func is_near(peer: int, point: Vector3) -> bool:
 	var player := players.get_node_or_null(str(peer)) as Node3D
 	return player != null and player.global_position.distance_to(point) <= SERVER_INTERACT_RANGE
+
+
+## Server side: puts a stack on the ground just in front of a player.
+func drop_item(peer: int, item: String, count: int) -> void:
+	var player := players.get_node_or_null(str(peer)) as Node3D
+	if player == null:
+		return
+	var spot := player.global_position + player.global_basis.z * -1.0
+	spot.y = terrain.ground_height(spot.x, spot.z)
+	var pickup := PICKUP_SCENE.instantiate()
+	pickup.item = item
+	pickup.count = count
+	pickup.world = self
+	pickup.position = spot
+	items.add_child(pickup, true)
 
 
 func _place_chest() -> void:

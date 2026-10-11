@@ -7,8 +7,9 @@ extends SceneTree
 ##   godot --headless --path . -s tests/e2e_client.gd -- --host --port=7790
 ## Registers (or logs in), creates, deletes and picks a character, and checks
 ## that the server spawns the player into the world with its race. Then walks
-## to an item, picks it up, puts it in the test chest and takes it back, and
-## checks the inventory is still there after re-entering the world. Exits
+## to an item, picks it up, moves it between slots, drops it on the ground and
+## picks it up again, puts it in the test chest and takes it back, and checks
+## the inventory is still there after re-entering the world. Exits
 ## non-zero on failure.
 ## Against a server started with --server-password=<password>, pass the same
 ## flag: the test first checks a wrong password is turned away.
@@ -143,16 +144,37 @@ func _check_inventory(world: Node, player: Node3D) -> void:
 	await create_timer(0.5).timeout
 	_check(not is_instance_valid(pickup) or pickup.is_queued_for_deletion(), "the picked up item is gone")
 
+	var slot := _find(session.inventory, _picked_item)
+	await _call_and_wait(session.inventory_changed, session.move_item.bind(slot, 7))
+	_check(session.inventory[7] != null and session.inventory[7]["item"] == _picked_item and session.inventory[slot] == null,
+		"drags a stack to another inventory slot")
+	await _call_and_wait(session.inventory_changed, session.drop_item.bind(7))
+	_check(_count(session.inventory, _picked_item) == 0, "dropping a stack takes it out of the inventory")
+	await create_timer(0.5).timeout
+	var dropped: Node3D = null
+	for node in world.get_node("Items").get_children():
+		if node.item == _picked_item and node.count == _picked_count \
+				and node.global_position.distance_to(player.global_position) < world.INTERACT_RANGE:
+			dropped = node
+	_check(dropped != null, "the dropped stack lies on the ground next to the player")
+	if dropped != null:
+		await _call_and_wait(session.inventory_changed, dropped.interact)
+	_check(_count(session.inventory, _picked_item) == _picked_count, "picks the dropped stack up again")
+
 	await _walk_to(player, chest.global_position)
 	result = await _call_and_wait(chest.contents_changed, chest.interact)
 	_check(chest.is_open and result[0].size() == chest.SLOTS, "opens the chest")
 	var total := _count(chest.contents, _picked_item) + _picked_count
-	var slot := _find(session.inventory, _picked_item)
+	slot = _find(session.inventory, _picked_item)
 	await _call_and_wait(session.inventory_changed, chest.store.bind(slot))
 	_check(_count(session.inventory, _picked_item) == 0, "the stored item leaves the inventory")
 	_check(_count(chest.contents, _picked_item) == total, "the stored item is in the chest")
-	await _call_and_wait(session.inventory_changed, chest.take.bind(_find(chest.contents, _picked_item)))
-	_check(_count(session.inventory, _picked_item) > 0, "takes the item back out of the chest")
+	var empty: int = chest.contents.find(null)
+	await _call_and_wait(chest.contents_changed, chest.move.bind(true, _find(chest.contents, _picked_item), true, empty))
+	_check(chest.contents[empty] != null and chest.contents[empty]["item"] == _picked_item, "drags a stack to another chest slot")
+	await _call_and_wait(session.inventory_changed, chest.move.bind(true, empty, false, 12))
+	_check(session.inventory[12] != null and session.inventory[12]["item"] == _picked_item,
+		"drags a stack from the chest into an inventory slot")
 	_check(_count(session.inventory, _picked_item) + _count(chest.contents, _picked_item) == total,
 		"nothing is lost or copied moving items around")
 	_picked_count = _count(session.inventory, _picked_item)

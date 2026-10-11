@@ -3,9 +3,11 @@ extends CanvasLayer
 ## Added to the world on every peer that has a player (not a dedicated server).
 ##
 ## Tab (or I) shows the inventory. E picks up the nearest item or opens the
-## nearest chest; with a chest open, clicking a stack moves it between the
-## inventory and the chest. Esc, Tab or E closes the screen again. All of it
-## only sends requests: the server owns every inventory (see Session and
+## nearest chest. Drag a stack onto another slot to move it (in the inventory,
+## in the chest or between the two), or off the panels to drop it on the
+## ground; with a chest open, clicking a stack also sends it across. Hovering a
+## stack says what it is. Esc, Tab or E closes the screen again. All of it only
+## sends requests: the server owns every inventory (see Session and
 ## scripts/chest.gd).
 
 const Items := preload("res://scripts/items.gd")
@@ -14,6 +16,8 @@ const COLUMNS := 5
 
 var _prompt: Label
 var _screen: Control
+## Behind the panels: dropping a dragged stack here puts it on the ground.
+var _drop_zone: Control
 var _inventory_grid: GridContainer
 var _chest_panel: Control
 var _chest_grid: GridContainer
@@ -102,8 +106,8 @@ func _open(chest: Node) -> void:
 	_chest = chest
 	_screen.visible = true
 	_chest_panel.visible = chest != null
-	_hint.text = "Click a stack to move it between your inventory and the chest." if chest != null \
-		else "Walk up to a chest and press E to store things."
+	_hint.text = "Drag stacks between slots, or click one to send it across. Drag off the panels to drop it." \
+		if chest != null else "Drag stacks to rearrange them, or off the panel to drop them on the ground."
 	_refresh()
 	_set_mouse_free(true)
 
@@ -140,49 +144,124 @@ func _set_mouse_free(free: bool) -> void:
 # --- Drawing ----------------------------------------------------------------
 
 func _refresh() -> void:
-	_fill(_inventory_grid, Session.inventory, _on_inventory_slot_pressed)
+	_fill(_inventory_grid, Session.inventory, false)
 	if _chest != null:
-		_fill(_chest_grid, _chest.contents, _on_chest_slot_pressed)
+		_fill(_chest_grid, _chest.contents, true)
 
 
-func _fill(grid: GridContainer, slots: Array, on_pressed: Callable) -> void:
+func _fill(grid: GridContainer, slots: Array, in_chest: bool) -> void:
 	for child in grid.get_children():
 		grid.remove_child(child)
 		child.queue_free()
 	for i in slots.size():
-		grid.add_child(_slot_button(slots[i], on_pressed.bind(i)))
+		grid.add_child(_slot_button(slots[i], in_chest, i))
 
 
-func _slot_button(slot, on_pressed: Callable) -> Button:
+func _slot_button(slot, in_chest: bool, index: int) -> Button:
 	var button := Button.new()
-	button.custom_minimum_size = Vector2(84, 64)
+	button.custom_minimum_size = Vector2(72, 72)
 	button.focus_mode = Control.FOCUS_NONE
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(4)
+	style.set_border_width_all(1)
+	style.set_content_margin_all(8)
+	style.border_color = Color(1, 1, 1, 0.12)
 	style.bg_color = Color(0.12, 0.12, 0.14, 0.9)
 	if slot != null:
-		button.text = "%s\n%d" % [Items.display_name(slot["item"]), slot["count"]]
-		button.tooltip_text = Items.display_name(slot["item"])
-		style.bg_color = Items.color(slot["item"]).darkened(0.45)
-		button.pressed.connect(on_pressed)
-	else:
-		button.disabled = true
+		var item: String = slot["item"]
+		var icon := Items.icon(item)
+		if icon != null:
+			button.icon = icon
+			button.expand_icon = true
+			button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		else:
+			button.text = Items.display_name(item)
+		button.tooltip_text = "%s\n%s" % [Items.display_name(item), Items.description(item)]
+		style.bg_color = Items.color(item).darkened(0.7)
+		button.pressed.connect(_on_slot_pressed.bind(in_chest, index))
+		var count := Label.new()
+		count.text = str(slot["count"])
+		count.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		count.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		count.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		count.offset_right = -4
+		count.add_theme_constant_override("outline_size", 4)
+		count.add_theme_color_override("font_outline_color", Color.BLACK)
+		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(count)
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var state_style := style.duplicate()
 		if state == "hover":
-			state_style.bg_color = style.bg_color.lightened(0.2)
+			state_style.bg_color = style.bg_color.lightened(0.15)
+			state_style.border_color = Color(1, 1, 1, 0.35)
 		button.add_theme_stylebox_override(state, state_style)
+	button.set_drag_forwarding(
+		_get_slot_drag_data.bind(button, slot, in_chest, index),
+		_can_drop_on_slot.bind(in_chest),
+		_drop_on_slot.bind(in_chest, index))
 	return button
 
 
-func _on_inventory_slot_pressed(slot: int) -> void:
-	if _chest != null:
-		_chest.store(slot)
+## Clicking a stack with a chest open sends it to the other side.
+func _on_slot_pressed(in_chest: bool, index: int) -> void:
+	if _chest == null:
+		return
+	if in_chest:
+		_chest.take(index)
+	else:
+		_chest.store(index)
 
 
-func _on_chest_slot_pressed(slot: int) -> void:
-	if _chest != null:
-		_chest.take(slot)
+# --- Drag and drop ----------------------------------------------------------
+# Dragged data is { "from_chest": bool, "slot": int }. Dropping on a slot moves
+# the stack there (merging or swapping); dropping anywhere off the panels puts
+# it on the ground.
+
+func _get_slot_drag_data(_at: Vector2, button: Button, slot, in_chest: bool, index: int) -> Variant:
+	if slot == null:
+		return null
+	var preview := Control.new()
+	var icon := TextureRect.new()
+	icon.texture = Items.icon(slot["item"])
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.size = Vector2(56, 56)
+	icon.position = -icon.size * 0.5
+	icon.modulate.a = 0.85
+	preview.add_child(icon)
+	var count := Label.new()
+	count.text = str(slot["count"])
+	count.position = Vector2(8, 8)
+	count.add_theme_constant_override("outline_size", 4)
+	count.add_theme_color_override("font_outline_color", Color.BLACK)
+	preview.add_child(count)
+	button.set_drag_preview(preview)
+	return { "from_chest": in_chest, "slot": index }
+
+
+func _can_drop_on_slot(_at: Vector2, data, in_chest: bool) -> bool:
+	return _is_slot_data(data) and (_chest != null or not (in_chest or data["from_chest"]))
+
+
+func _drop_on_slot(_at: Vector2, data, in_chest: bool, index: int) -> void:
+	if data["from_chest"] or in_chest:
+		_chest.move(data["from_chest"], data["slot"], in_chest, index)
+	else:
+		Session.move_item(data["slot"], index)
+
+
+func _can_drop_on_ground(_at: Vector2, data) -> bool:
+	return _is_slot_data(data) and (_chest != null or not data["from_chest"])
+
+
+func _drop_on_ground(_at: Vector2, data) -> void:
+	if data["from_chest"]:
+		_chest.drop(data["slot"])
+	else:
+		Session.drop_item(data["slot"])
+
+
+func _is_slot_data(data) -> bool:
+	return data is Dictionary and data.has("from_chest") and data.has("slot")
 
 
 func _build() -> void:
@@ -197,13 +276,23 @@ func _build() -> void:
 	_prompt.add_theme_color_override("font_outline_color", Color.BLACK)
 	add_child(_prompt)
 
-	_screen = CenterContainer.new()
+	_screen = Control.new()
 	_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_screen)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.25)
+	_drop_zone = dim
+	_drop_zone.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_drop_zone.set_drag_forwarding(Callable(), _can_drop_on_ground, _drop_on_ground)
+	_screen.add_child(_drop_zone)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen.add_child(center)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
-	_screen.add_child(column)
+	center.add_child(column)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 24)
 	column.add_child(row)
@@ -222,6 +311,11 @@ func _build() -> void:
 
 func _panel(title: String) -> PanelContainer:
 	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.1, 0.85)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(12)
+	panel.add_theme_stylebox_override("panel", style)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
