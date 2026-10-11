@@ -63,6 +63,8 @@ var _usernames := {}          # peer id -> logged in username (lowercase)
 var _in_world := {}           # peer id -> character name
 var _races := {}              # peer id -> race of the character in the world
 var _inventories := {}        # peer id -> Inventory of the character in the world
+var _saved_spots := {}        # peer id -> where the character last left the world (see AccountStore.load_position())
+var _bodies := {}             # peer id -> the character's player node in the world
 var _failed_logins := {}      # peer id -> count
 
 
@@ -100,6 +102,25 @@ func inventory_updated(peer: int) -> void:
 	_set_inventory.rpc_id(peer, inv.to_array())
 
 
+## Server side: where a peer's character stood and faced when it last left the
+## world, as { "position": Vector3, "yaw": float }, or {} to use the spawn.
+func saved_spot_of(peer: int) -> Dictionary:
+	return _saved_spots.get(peer, {})
+
+
+## Server side: the world calls this with each player it spawns, so where the
+## player stands can be saved when they leave (and every so often in between).
+func set_player_body(peer: int, body: Node3D) -> void:
+	_bodies[peer] = body
+
+
+## Server side: saves where every player in the world is standing, in case the
+## server stops without them leaving first.
+func save_positions() -> void:
+	for peer in _in_world:
+		_save_position(peer)
+
+
 ## Server side: the database that also holds the world's chests.
 func accounts() -> AccountStore:
 	return _accounts()
@@ -107,6 +128,8 @@ func accounts() -> AccountStore:
 
 ## Forgets everything, on both sides. Called when leaving a game.
 func reset() -> void:
+	# A host leaving its own game: save where everyone was first.
+	save_positions()
 	username = ""
 	characters = []
 	character_name = ""
@@ -117,6 +140,8 @@ func reset() -> void:
 	_in_world.clear()
 	_races.clear()
 	_inventories.clear()
+	_saved_spots.clear()
+	_bodies.clear()
 	_failed_logins.clear()
 
 
@@ -258,6 +283,7 @@ func _request_enter_world(p_name) -> void:
 	var inv := Inventory.new(INVENTORY_SLOTS)
 	inv.load_array(_accounts().load_inventory(account, p_name))
 	_inventories[peer] = inv
+	_saved_spots[peer] = _accounts().load_position(account, p_name)
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.display_name(race)])
 	_entered_world.rpc_id(peer, p_name)
 	_set_inventory.rpc_id(peer, inv.to_array())
@@ -411,11 +437,21 @@ func _remove_from_world(peer: int) -> void:
 	# Saved on every change already; this catches anything missed.
 	if _inventories.has(peer):
 		_accounts().save_inventory(_usernames[peer], _in_world[peer], _inventories[peer].to_array())
+	_save_position(peer)
 	_in_world.erase(peer)
 	_races.erase(peer)
 	_inventories.erase(peer)
+	_saved_spots.erase(peer)
+	_bodies.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
+
+
+func _save_position(peer: int) -> void:
+	var body = _bodies.get(peer)  # Untyped: it may have been freed already.
+	if not is_instance_valid(body) or not body.is_inside_tree() or not _in_world.has(peer):
+		return
+	_accounts().save_position(_usernames[peer], _in_world[peer], body.global_position, body.global_rotation.y)
 
 
 func _broadcast_roster() -> void:

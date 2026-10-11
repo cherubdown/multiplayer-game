@@ -75,7 +75,7 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 ## Playing
 
-Once you pick a character you're on the island, in the Meadows. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
+Once you pick a character you're on the island: a new character starts in the Meadows, and after that you come back where you left off, facing the same way. The server saves where every character stands when they leave the world or disconnect, and every 15 seconds in case it stops without warning. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
 ### Items and chests
 

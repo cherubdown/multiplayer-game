@@ -52,6 +52,7 @@ func _init() -> void:
 	_check(not raw.contains("secret1".to_utf8_buffer().hex_encode()), "password is not stored in plain text")
 
 	_check_world_seed()
+	_check_positions()
 	_check_legacy_import()
 	_check_race_migration()
 
@@ -70,6 +71,26 @@ func _check_world_seed() -> void:
 	store.close()
 	var reloaded := AccountStore.new(PATH)
 	_check(reloaded.world_seed() == "Chris's \"big\" world", "world seed survives a reload")
+	reloaded.close()
+
+
+## Where a character stands is saved per character and survives a reload.
+func _check_positions() -> void:
+	_remove_test_files()
+	var store := AccountStore.new(PATH)
+	store.register("chris", "secret1")
+	store.create_character("chris", "Ragnar")
+	store.create_character("chris", "Astrid")
+	_check(store.load_position("chris", "Ragnar").is_empty(), "a new character has no saved position")
+	_check(store.save_position("chris", "ragnar", Vector3(12.5, 3.25, -40.0), 1.5), "saves a position")
+	_check(not store.save_position("chris", "Ragnar", Vector3(INF, 0.0, 0.0), 0.0), "rejects a position that isn't finite")
+	_check(not store.save_position("nobody", "Ragnar", Vector3.ZERO, 0.0), "rejects an unknown account")
+	_check(store.load_position("chris", "Astrid").is_empty(), "positions are per character")
+	store.close()
+	var reloaded := AccountStore.new(PATH)
+	var spot := reloaded.load_position("chris", "Ragnar")
+	_check(not spot.is_empty() and spot["position"].is_equal_approx(Vector3(12.5, 3.25, -40.0)), "position survives a reload")
+	_check(not spot.is_empty() and is_equal_approx(spot["yaw"], 1.5), "facing survives a reload")
 	reloaded.close()
 
 
@@ -129,6 +150,8 @@ func _check_race_migration() -> void:
 	_check(characters.size() == 1 and characters[0]["race"] == "human", "old characters become humans")
 	_check(store.create_character("old", "Galadriel", "elf") == "", "migrated database takes new races")
 	_check(store.world_seed() == "" and store.set_world_seed("old world"), "migrated database can save a world seed")
+	_check(store.load_position("old", "Sven").is_empty(), "migrated characters start at the spawn")
+	_check(store.save_position("old", "Sven", Vector3(1.0, 2.0, 3.0), -0.5), "migrated database can save positions")
 	store.close()
 
 
