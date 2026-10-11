@@ -56,6 +56,18 @@ func close() -> void:
 		closed.emit()
 
 
+## Moves a stack from one slot to another, each in the chest (`from_chest` /
+## `to_chest` true) or in the player's inventory, merging or swapping like
+## Inventory.move_slot().
+func move(from_chest: bool, from_slot: int, to_chest: bool, to_slot: int) -> void:
+	_request_move.rpc_id(1, from_chest, from_slot, to_chest, to_slot)
+
+
+## Drops the stack in slot `slot` of the chest on the ground by the player.
+func drop(slot: int) -> void:
+	_request_drop.rpc_id(1, slot)
+
+
 ## Moves the stack in slot `slot` of the player's inventory into the chest.
 func store(slot: int) -> void:
 	_request_store.rpc_id(1, slot)
@@ -99,6 +111,34 @@ func _request_take(slot) -> void:
 	if peer != 0 and slot is int and _inventory.move_to(slot, Session.inventory_of(peer)) > 0:
 		_changed()
 		Session.inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_move(from_chest, from_slot, to_chest, to_slot) -> void:
+	var peer := _viewer()
+	if peer == 0 or not (from_chest is bool and to_chest is bool and from_slot is int and to_slot is int):
+		return
+	var player_inventory := Session.inventory_of(peer)
+	var source := _inventory if from_chest else player_inventory
+	var target := _inventory if to_chest else player_inventory
+	if not source.move_slot(from_slot, target, to_slot):
+		return
+	if from_chest or to_chest:
+		_changed()
+	if not (from_chest and to_chest):
+		Session.inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_drop(slot) -> void:
+	var peer := _viewer()
+	if peer == 0 or not slot is int:
+		return
+	var stack := _inventory.take(slot)
+	if stack.is_empty():
+		return
+	_changed()
+	world.drop_item(peer, stack["item"], stack["count"])
 
 
 ## The id of the peer that sent the current RPC if it has the chest open and

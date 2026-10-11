@@ -33,6 +33,9 @@ signal world_seed_changed(seed_text: String)
 ## Server side: spawn or despawn this peer's player.
 signal player_entered(peer_id: int, character_name: String, race: String)
 signal player_left(peer_id: int)
+## Server side: a player dropped a stack on the ground, for the world to spawn
+## next to them.
+signal item_dropped(peer_id: int, item: String, count: int)
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
@@ -146,6 +149,16 @@ func enter_world(p_name: String) -> void:
 	_request_enter_world.rpc_id(1, p_name)
 
 
+## Moves the stack in inventory slot `from` to slot `to` (merging or swapping).
+func move_item(from: int, to: int) -> void:
+	_request_move_item.rpc_id(1, from, to)
+
+
+## Drops the stack in inventory slot `slot` on the ground.
+func drop_item(slot: int) -> void:
+	_request_drop_item.rpc_id(1, slot)
+
+
 ## Back to character select without disconnecting.
 func leave_world() -> void:
 	if character_name == "":
@@ -250,6 +263,27 @@ func _request_enter_world(p_name) -> void:
 	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_move_item(from, to) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	if inv != null and from is int and to is int and inv.move_slot(from, inv, to):
+		inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_drop_item(slot) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	if inv == null or not slot is int:
+		return
+	var stack := inv.take(slot)
+	if stack.is_empty():
+		return
+	inventory_updated(peer)
+	item_dropped.emit(peer, stack["item"], stack["count"])
 
 
 @rpc("any_peer", "call_local", "reliable")

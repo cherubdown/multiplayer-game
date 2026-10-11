@@ -54,7 +54,7 @@ func count_of(item: String) -> int:
 
 ## Moves as much of slot `index` as fits into `other`. Returns how many moved.
 func move_to(index: int, other) -> int:
-	if index < 0 or index >= slots.size() or slots[index] == null:
+	if not has_slot(index) or slots[index] == null:
 		return 0
 	var stack: Dictionary = slots[index]
 	var left: int = other.add(stack["item"], stack["count"])
@@ -64,6 +64,44 @@ func move_to(index: int, other) -> int:
 	else:
 		stack["count"] = left
 	return moved
+
+
+## Moves the stack in slot `from` to slot `to` of `target`, which may be this
+## inventory. Onto the same item it tops that stack up (leaving whatever
+## doesn't fit); onto a different item the two swap places. Returns whether
+## anything changed.
+func move_slot(from: int, target, to: int) -> bool:
+	if not has_slot(from) or not target.has_slot(to) or slots[from] == null:
+		return false
+	if target == self and from == to:
+		return false
+	var stack: Dictionary = slots[from]
+	var other = target.slots[to]
+	if other == null or other["item"] != stack["item"]:
+		target.slots[to] = stack
+		slots[from] = other
+		return true
+	var moved := mini(stack["count"], Items.max_stack(stack["item"]) - other["count"])
+	if moved <= 0:
+		return false
+	other["count"] += moved
+	stack["count"] -= moved
+	if stack["count"] == 0:
+		slots[from] = null
+	return true
+
+
+## Empties a slot and returns what was in it, or {} if it was empty.
+func take(index: int) -> Dictionary:
+	if not has_slot(index) or slots[index] == null:
+		return {}
+	var stack: Dictionary = slots[index]
+	slots[index] = null
+	return stack
+
+
+func has_slot(index) -> bool:
+	return index is int and index >= 0 and index < slots.size()
 
 
 ## A copy of the slots, safe to send over the network or save as JSON.

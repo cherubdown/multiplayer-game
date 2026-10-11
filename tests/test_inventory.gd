@@ -6,6 +6,7 @@ extends SceneTree
 
 const Inventory := preload("res://scripts/inventory.gd")
 const AccountStore := preload("res://scripts/account_store.gd")
+const Items := preload("res://scripts/items.gd")
 const PATH := "user://test_inventory.db"
 
 var _failures := 0
@@ -29,6 +30,30 @@ func _init() -> void:
 	_check(inv.move_to(1, chest) == 0 and inv.slots[1]["count"] == 50, "moves nothing into a full inventory")
 	_check(chest.move_to(0, inv) == 5 and chest.slots[0] == null, "moves a stack back")
 	_check(inv.move_to(7, chest) == 0 and inv.move_to(-1, chest) == 0, "ignores slots out of range")
+
+	var a := Inventory.new(3)
+	var b := Inventory.new(2)
+	a.add("wood", 40)
+	a.slots[1] = { "item": "wood", "count": 30 }
+	a.slots[2] = { "item": "stone", "count": 4 }
+	_check(a.move_slot(0, a, 1) and a.slots[1]["count"] == 50 and a.slots[0]["count"] == 20,
+		"dragging onto the same item tops it up and leaves the rest")
+	_check(not a.move_slot(0, a, 1), "dragging onto a full stack of the same item does nothing")
+	_check(a.move_slot(2, a, 0) and a.slots[0]["item"] == "stone" and a.slots[2]["item"] == "wood",
+		"dragging onto a different item swaps them")
+	_check(a.move_slot(0, b, 1) and b.slots[1]["item"] == "stone" and a.slots[0] == null,
+		"drags into an empty slot of another inventory")
+	_check(b.move_slot(1, a, 1) and a.slots[1]["item"] == "stone" and b.slots[1]["item"] == "wood",
+		"swaps between inventories")
+	_check(not a.move_slot(0, b, 0) and not a.move_slot(1, a, 1) and not a.move_slot(1, b, 5),
+		"ignores empty, same and out of range slots")
+	_check(a.take(1) == { "item": "stone", "count": 4 } and a.slots[1] == null and a.take(1).is_empty(),
+		"takes a whole stack out")
+
+	for item in Items.IDS:
+		_check(Items.description(item) != "", "%s has a description" % item)
+		var icon := Items.icon(item)
+		_check(icon != null and icon.get_width() == 64, "%s has an icon" % item)
 
 	var loaded := Inventory.new(3)
 	loaded.load_array(JSON.parse_string(JSON.stringify(inv.to_array())))
