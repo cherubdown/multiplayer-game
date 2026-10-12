@@ -140,7 +140,7 @@ horizontal_alignment = 1
 
 [node name="Preview" type="SubViewportContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 240)
+custom_minimum_size = Vector2(0, 205)
 layout_mode = 2
 script = ExtResource("2_preview")
 
@@ -157,6 +157,11 @@ custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 
 [node name="RacePicker" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SexPicker" type="HBoxContainer" parent="Center/Panel/Margin/VBox/CharacterSelect"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8

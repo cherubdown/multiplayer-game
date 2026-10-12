@@ -1,12 +1,13 @@
 extends SubViewportContainer
-## A small turntable in character select showing a race's model idling. Hides
-## itself where models can't be shown (headless runs).
+## A small turntable in character select showing a race and sex's model
+## idling. Hides itself where models can't be shown (headless runs).
 
 const CharacterModel := preload("res://scripts/character_model.gd")
 
 const TURN_SPEED := 0.4
 
 var _viewport: SubViewport
+var _camera: Camera3D
 var _stand: Node3D
 var _model: CharacterModel
 
@@ -41,20 +42,19 @@ func _ready() -> void:
 	rim.light_color = Color(0.7, 0.8, 1.0)
 	_viewport.add_child(rim)
 
-	var camera := Camera3D.new()
-	camera.fov = 35
-	camera.position = Vector3(0, 1.15, 4.6)
-	_viewport.add_child(camera)
-	camera.look_at(Vector3(0, 0.85, 0))
+	_camera = Camera3D.new()
+	_camera.fov = 35
+	_viewport.add_child(_camera)
+	_frame(1.8)
 
 	_stand = Node3D.new()
 	_stand.rotation.y = deg_to_rad(-20)
 	_viewport.add_child(_stand)
 
 
-## Shows race, or nothing for "".
-func show_race(race: String) -> void:
-	if _stand == null or (_model != null and _model.race == race):
+## Shows race and sex, or nothing for race "".
+func show_character(race: String, sex: String) -> void:
+	if _stand == null or (_model != null and _model.race == race and _model.sex == sex):
 		return
 	if _model != null:
 		_model.queue_free()
@@ -63,12 +63,22 @@ func show_race(race: String) -> void:
 		return
 	_model = CharacterModel.new()
 	_stand.add_child(_model)
-	if _model.setup(race):
+	if _model.setup(race, sex):
+		_frame(_model.height)
 		# A little flourish so picking a race feels alive.
 		_model.play_once("Cheer")
 	else:
 		_model.queue_free()
 		_model = null
+
+
+## Fits a character this tall in view. Everyone shorter than a human is shown
+## at the same size, so dwarves still look short.
+func _frame(model_height: float) -> void:
+	var fit := maxf(model_height, 1.9) * 1.15
+	var distance := fit * 0.5 / tan(deg_to_rad(_camera.fov * 0.5))
+	var center := Vector3(0.0, fit * 0.45, 0.0)
+	_camera.look_at_from_position(center + Vector3(0.0, fit * 0.12, distance), center)
 
 
 func _process(delta: float) -> void:

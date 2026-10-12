@@ -27,9 +27,11 @@ func _init() -> void:
 
 	_check(store.create_character("chris", "Ragnar", "dwarf") == "", "creates a character")
 	_check(store.create_character("chris", "Orc", "orc") != "", "rejects an unknown race")
+	_check(store.create_character("chris", "Shrekka", "ogre", "neither") != "", "rejects an unknown sex")
 	_check(store.create_character("chris", "ragnar") != "", "rejects a duplicate name")
 	_check(store.create_character("chris", "1x") != "", "rejects an invalid name")
-	for character_name in ["Astrid", "Bjorn", "Freya", "Leif"]:
+	_check(store.create_character("chris", "Astrid", "ogre", "female") == "", "creates a female ogre")
+	for character_name in ["Bjorn", "Freya", "Leif"]:
 		store.create_character("chris", character_name)
 	_check(store.create_character("chris", "Sigrid") != "", "caps characters per account")
 	_check(store.delete_character("chris", "Bjorn") == "", "deletes a character")
@@ -45,7 +47,9 @@ func _init() -> void:
 	var names := reloaded.list_characters("chris").map(func(c: Dictionary) -> String: return c["name"])
 	_check(names == ["Ragnar", "Astrid", "Freya", "Leif"], "characters survive a reload in order")
 	var races := reloaded.list_characters("chris").map(func(c: Dictionary) -> String: return c["race"])
-	_check(races == ["dwarf", "human", "human", "human"], "races survive a reload, human by default")
+	_check(races == ["dwarf", "ogre", "human", "human"], "races survive a reload, human by default")
+	var sexes := reloaded.list_characters("chris").map(func(c: Dictionary) -> String: return c["sex"])
+	_check(sexes == ["male", "female", "male", "male"], "sexes survive a reload, male by default")
 	reloaded.close()
 	var raw := FileAccess.get_file_as_bytes(PATH).hex_encode()
 	_check(raw.contains("Ragnar".to_utf8_buffer().hex_encode()), "database was written")
@@ -148,6 +152,7 @@ func _check_race_migration() -> void:
 	var store := AccountStore.new(PATH)
 	var characters := store.list_characters("old")
 	_check(characters.size() == 1 and characters[0]["race"] == "human", "old characters become humans")
+	_check(characters[0]["sex"] == "male", "old characters become male")
 	_check(store.create_character("old", "Galadriel", "elf") == "", "migrated database takes new races")
 	_check(store.world_seed() == "" and store.set_world_seed("old world"), "migrated database can save a world seed")
 	_check(store.load_position("old", "Sven").is_empty(), "migrated characters start at the spawn")

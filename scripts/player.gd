@@ -5,7 +5,7 @@ extends CharacterBody3D
 ## only owns the PlayerInput child, whose state is replicated to the server.
 ## Position and rotation are replicated from the server to every peer by
 ## ServerSynchronizer, along with velocity and airborne so every peer can play
-## the right animation on the character's race model.
+## the right animation on the character's model.
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
@@ -26,6 +26,7 @@ const TURN_SPEED := 10.0
 ## Set by the server before spawning; replicated once at spawn time.
 @export var character_name := ""
 @export var race := Races.DEFAULT
+@export var sex := Races.DEFAULT_SEX
 ## Set by the server every physics step, for animations.
 @export var airborne := false
 
@@ -48,9 +49,9 @@ func _ready() -> void:
 		# Start looking the way the character faces (where they faced when
 		# they last left), not always north.
 		input.yaw = rotation.y
-	if model.setup(race):
+	if model.setup(race, sex):
 		$Body.visible = false
-		$Nameplate.position.y = Races.INFO[model.race]["scale"].y * 2.35 + 0.3
+		$Nameplate.position.y = model.height + 0.3
 	elif is_local:
 		# Without a model (e.g. a headless peer), the local player's capsule
 		# gets a different color so you can tell yourself apart.
