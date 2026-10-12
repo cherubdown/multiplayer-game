@@ -1,7 +1,9 @@
 extends RefCounted
-## Server-side accounts, characters (with their inventories) and the world
-## (its seed and what is in its chests), saved in a SQLite database (user://accounts.db by default). The database and its tables are created
-## the first time the server needs them, so a new server needs no setup.
+## Server-side accounts, characters (with their inventories and where they
+## were standing) and the world (its seed and what is in its chests), saved in
+## a SQLite database (user://accounts.db by default). The database and its
+## tables are created the first time the server needs them, so a new server
+## needs no setup.
 ## Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes.
 ##
 ## Every method that can fail returns "" on success or a message the player
@@ -16,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -167,6 +169,41 @@ func save_inventory(username: String, character_name: String, slots: Array) -> b
 		[JSON.stringify(slots), account["id"], character_name.strip_edges().to_lower()])
 	if not ok:
 		push_error("Could not save %s's inventory in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
+## Where a character was standing and which way they faced when they last
+## left the world, as { "position": Vector3, "yaw": float }, or {} for a
+## character that has never been in the world.
+func load_position(username: String, character_name: String) -> Dictionary:
+	if not is_open():
+		return {}
+	_db.query_with_bindings(
+		"SELECT c.pos_x, c.pos_y, c.pos_z, c.yaw FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty():
+		return {}
+	var row: Dictionary = _db.query_result[0]
+	if row["pos_x"] == null or row["pos_y"] == null or row["pos_z"] == null:
+		return {}
+	var position := Vector3(float(row["pos_x"]), float(row["pos_y"]), float(row["pos_z"]))
+	var yaw := float(row["yaw"]) if row["yaw"] != null else 0.0
+	if not position.is_finite() or not is_finite(yaw):
+		return {}
+	return { "position": position, "yaw": yaw }
+
+
+## Saves where a character is standing and which way they face (rotation
+## around Y, in radians).
+func save_position(username: String, character_name: String, position: Vector3, yaw: float) -> bool:
+	var account := _account(username)
+	if account.is_empty() or not position.is_finite() or not is_finite(yaw):
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET pos_x = ?, pos_y = ?, pos_z = ?, yaw = ? WHERE account_id = ? AND name_key = ?",
+		[position.x, position.y, position.z, yaw, account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's position in %s: %s" % [character_name, path, _db.error_message])
 	return ok
 
 
@@ -336,6 +373,22 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add inventories to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 5:
+		# Where each character stood and faced when they left the world. NULL
+		# until they have been in the world, so they start at the spawn.
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN pos_x REAL;
+			ALTER TABLE characters ADD COLUMN pos_y REAL;
+			ALTER TABLE characters ADD COLUMN pos_z REAL;
+			ALTER TABLE characters ADD COLUMN yaw REAL;
+			PRAGMA user_version = 5;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add character positions to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

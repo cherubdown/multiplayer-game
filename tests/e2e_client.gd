@@ -9,8 +9,9 @@ extends SceneTree
 ## that the server spawns the player into the world with its race. Then walks
 ## to an item, picks it up, moves it between slots, drops it on the ground and
 ## picks it up again, puts it in the test chest and takes it back, and checks
-## the inventory is still there after re-entering the world. Exits
-## non-zero on failure.
+## the inventory is still there after re-entering the world, and that the
+## player comes back where they stood, facing the same way. Exits non-zero on
+## failure.
 ## Against a server started with --server-password=<password>, pass the same
 ## flag: the test first checks a wrong password is turned away.
 ## Pass --expect-seed=<text> to check the server sends that world seed.
@@ -95,6 +96,13 @@ func _run() -> void:
 	if player != null:
 		await _check_inventory(world, player)
 
+	# Turn somewhere the spawn would never face, and remember where we stand.
+	var left_at := Vector3.ZERO
+	var left_facing := 0.0
+	if player != null:
+		await _turn_to(player, 2.0)
+		left_at = player.global_position
+		left_facing = player.global_rotation.y
 	await _call_and_wait(session.left_world, session.leave_world)
 	await create_timer(0.5).timeout
 	_check(world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id()) == null, "leaving despawns the player")
@@ -105,6 +113,16 @@ func _run() -> void:
 		"inventory is still there after re-entering the world")
 	_check(saved == [], "leaving the world clears the client's copy of the inventory")
 	await create_timer(0.5).timeout
+	player = world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id())
+	_check(player != null, "server spawned our player again")
+	if player != null:
+		var back := Vector2(player.global_position.x - left_at.x, player.global_position.z - left_at.z).length()
+		_check(back < 0.5, "comes back where they left (%.2f m away, at %s, left at %s)" % [back, player.global_position, left_at])
+		_check(absf(player.global_position.y - left_at.y) < 1.0, "comes back at the same height")
+		_check(absf(angle_difference(player.global_rotation.y, left_facing)) < 0.05,
+			"faces the same way (%.2f, left facing %.2f)" % [player.global_rotation.y, left_facing])
+		var input: Node = player.get_node("PlayerInput")
+		_check(absf(angle_difference(input.yaw, left_facing)) < 0.05, "the camera looks the way the character faces")
 	await _call_and_wait(session.left_world, session.leave_world)
 
 	print("E2E: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
@@ -200,6 +218,19 @@ func _walk_to(player: Node3D, target: Vector3) -> void:
 	await create_timer(0.5).timeout
 	var left := Vector2(target.x - player.global_position.x, target.z - player.global_position.z).length()
 	_check(left < 2.0, "walked up to %s (%.1f m away)" % [target, left])
+
+
+## Takes a few steps facing `yaw`, so the body turns that way.
+func _turn_to(player: Node3D, yaw: float) -> void:
+	var input: Node = player.get_node("PlayerInput")
+	input.set_process(false)
+	input.yaw = yaw
+	input.direction = Vector2(0.0, -1.0)
+	await create_timer(0.6).timeout
+	input.direction = Vector2.ZERO
+	await create_timer(0.5).timeout
+	_check(absf(angle_difference(player.global_rotation.y, yaw)) < 0.1,
+		"turned to face %.2f (facing %.2f)" % [yaw, player.global_rotation.y])
 
 
 func _count(slots: Array, item: String) -> int:

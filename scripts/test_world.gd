@@ -4,7 +4,8 @@ extends Node3D
 ## autoload knows the seed. On the server, spawns a player for every peer that
 ## has logged in and picked a character (see the Session autoload), and removes
 ## it when they leave. MultiplayerSpawner replicates those spawns to every
-## client.
+## client. A character comes back where it stood and facing the way it faced
+## when it last left the world; a new character starts near the middle.
 ##
 ## Next to the spawn there's a test chest (on every peer) and some items on
 ## the ground to pick up, which the server spawns and ItemSpawner replicates.
@@ -21,6 +22,9 @@ const InventoryUI := preload("res://scripts/inventory_ui.gd")
 ## server allows a bit more, since it sees players slightly later.
 const INTERACT_RANGE := 2.5
 const SERVER_INTERACT_RANGE := 4.0
+## Seconds between saves of where every player stands, so a server that is
+## stopped (or crashes) without players leaving loses little.
+const POSITION_SAVE_SECONDS := 15.0
 ## Seconds before a picked up test item appears again.
 const RESPAWN_SECONDS := 60.0
 ## Where the test chest stands, as an angle and distance from the middle of
@@ -54,6 +58,11 @@ func _ready() -> void:
 	Session.player_entered.connect(_add_player)
 	Session.player_left.connect(_remove_player)
 	Session.item_dropped.connect(drop_item)
+	var autosave := Timer.new()
+	autosave.wait_time = POSITION_SAVE_SECONDS
+	autosave.autostart = true
+	autosave.timeout.connect(Session.save_positions)
+	add_child(autosave)
 	var in_world := Session.players_in_world()
 	for id in in_world:
 		_add_player(id, in_world[id], Session.race_of(id))
@@ -126,10 +135,20 @@ func _add_player(id: int, character_name: String, race: String) -> void:
 	player.name = str(id)
 	player.character_name = character_name
 	player.race = race
-	# Spread spawns out around the middle of the Meadows so players don't
-	# start inside each other, and drop them onto the ground.
-	player.position = terrain.gen.spawn_point(randf() * TAU) + Vector3.UP * 1.5
+	var saved := Session.saved_spot_of(id)
+	if not saved.is_empty():
+		# Back where they left off. Lift them a little so they never start
+		# inside the ground.
+		var spot: Vector3 = saved["position"]
+		spot.y = maxf(spot.y, terrain.ground_height(spot.x, spot.z)) + 0.1
+		player.position = spot
+		player.rotation.y = saved["yaw"]
+	else:
+		# Spread spawns out around the middle of the Meadows so players don't
+		# start inside each other, and drop them onto the ground.
+		player.position = terrain.gen.spawn_point(randf() * TAU) + Vector3.UP * 1.5
 	players.add_child(player, true)
+	Session.set_player_body(id, player)
 
 
 func _remove_player(id: int) -> void:

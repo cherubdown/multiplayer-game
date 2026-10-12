@@ -45,6 +45,9 @@ func _ready() -> void:
 	$Nameplate.visible = not is_local
 	if is_local:
 		Session.leaving_world.connect(_on_leaving_world)
+		# Start looking the way the character faces (where they faced when
+		# they last left), not always north.
+		input.yaw = rotation.y
 	if model.setup(race):
 		$Body.visible = false
 		$Nameplate.position.y = Races.INFO[model.race]["scale"].y * 2.35 + 0.3
