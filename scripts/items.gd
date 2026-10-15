@@ -6,7 +6,7 @@ extends RefCounted
 ## Icons are SVG drawn in code, so they load on a fresh checkout without the
 ## editor having imported anything.
 
-const IDS: Array[String] = ["wood", "stone", "flint", "berries"]
+const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple"]
 
 const INFO := {
 	"wood": {
@@ -36,6 +36,27 @@ const INFO := {
 		"max_stack": 50,
 		"color": Color(0.85, 0.1, 0.25),
 		"shape": "berries",
+	},
+	"blueberries": {
+		"name": "Blueberries",
+		"description": "Small, dark forest berries. Rarer than raspberries, and just as sweet.",
+		"max_stack": 50,
+		"color": Color(0.22, 0.28, 0.7),
+		"shape": "berries",
+	},
+	"mushroom": {
+		"name": "Mushroom",
+		"description": "A plump brown mushroom from the forest floor. Good in a stew.",
+		"max_stack": 50,
+		"color": Color(0.62, 0.42, 0.24),
+		"shape": "mushroom",
+	},
+	"apple": {
+		"name": "Apple",
+		"description": "A crisp red apple, picked from one of the island's rare apple trees.",
+		"max_stack": 50,
+		"color": Color(0.8, 0.12, 0.1),
+		"shape": "apple",
 	},
 }
 
@@ -69,6 +90,25 @@ const ICONS := {
 		<circle cx="18" cy="34" r="2.5" fill="#ff8fa3"/>
 		<circle cx="38" cy="32" r="2.5" fill="#ff8fa3"/>
 		<circle cx="28" cy="46" r="2.5" fill="#ff8fa3"/>
+	</svg>""",
+	"blueberries": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M32 20 C24 8 12 10 10 16 C18 16 25 18 32 20 Z" fill="#3f8f3a" stroke="#1f4d1c" stroke-width="2"/>
+		<circle cx="20" cy="38" r="10" fill="#34449e" stroke="#151c4a" stroke-width="2"/>
+		<circle cx="42" cy="34" r="10" fill="#3b4db0" stroke="#151c4a" stroke-width="2"/>
+		<circle cx="32" cy="50" r="9" fill="#2e3d8e" stroke="#151c4a" stroke-width="2"/>
+		<circle cx="44" cy="52" r="7" fill="#34449e" stroke="#151c4a" stroke-width="2"/>
+		<path d="M18 34 l4 0 M40 30 l4 0 M30 46 l4 0" stroke="#9aa6e6" stroke-width="2" stroke-linecap="round"/>
+	</svg>""",
+	"mushroom": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M26 34 L24 54 Q32 58 40 54 L38 34 Z" fill="#efe6d2" stroke="#7d6f55" stroke-width="2" stroke-linejoin="round"/>
+		<path d="M8 36 C8 14 56 14 56 36 Q32 42 8 36 Z" fill="#9c6634" stroke="#4a2c12" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M18 26 C22 20 30 18 36 19" fill="none" stroke="#c99560" stroke-width="3" stroke-linecap="round"/>
+	</svg>""",
+	"apple": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M32 20 C22 12 8 18 10 34 C12 50 24 58 32 54 C40 58 52 50 54 34 C56 18 42 12 32 20 Z" fill="#d42a1e" stroke="#6b0f08" stroke-width="2.5"/>
+		<path d="M32 20 C32 14 34 10 37 7" fill="none" stroke="#5a3415" stroke-width="3" stroke-linecap="round"/>
+		<path d="M35 14 C40 8 48 9 50 12 C45 15 40 15 35 14 Z" fill="#4fa548" stroke="#1f4d1c" stroke-width="1.5"/>
+		<path d="M18 28 C19 24 22 22 25 22" fill="none" stroke="#ff9a8a" stroke-width="3" stroke-linecap="round"/>
 	</svg>""",
 }
 
@@ -133,6 +173,17 @@ static func mesh(item: String) -> Mesh:
 			var sphere := SphereMesh.new()
 			sphere.radius = 0.1
 			sphere.height = 0.2
+			result = sphere
+		"mushroom":
+			var cap := SphereMesh.new()
+			cap.radius = 0.15
+			cap.height = 0.15
+			cap.is_hemisphere = true
+			result = cap
+		"apple":
+			var sphere := SphereMesh.new()
+			sphere.radius = 0.12
+			sphere.height = 0.22
 			result = sphere
 		_:
 			var box := BoxMesh.new()

@@ -12,11 +12,15 @@ extends Node3D
 ## Picked up items come back after a while so there's always something to try.
 ## Items players drop lie where they fell until someone picks them up (until
 ## the server restarts).
+##
+## Mushrooms, berry bushes and apple trees grow around the island from the
+## seed, for players to pick (see scripts/forage.gd).
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PICKUP_SCENE := preload("res://scenes/item_pickup.tscn")
 const CHEST_SCENE := preload("res://scenes/chest.tscn")
 const InventoryUI := preload("res://scripts/inventory_ui.gd")
+const Forage := preload("res://scripts/forage.gd")
 
 ## How close a player has to be to pick something up or open a chest. The
 ## server allows a bit more, since it sees players slightly later.
@@ -45,6 +49,8 @@ const TEST_ITEMS := [
 @onready var players: Node3D = $Players
 @onready var terrain: Node3D = $Terrain
 @onready var items: Node3D = $Items
+## The plants to pick, rebuilt with the terrain.
+var forage: Forage
 
 
 func _ready() -> void:
@@ -74,6 +80,7 @@ func _build_terrain(seed_text: String) -> void:
 	# A dedicated server draws nothing, so it only needs the ground's shape.
 	terrain.build(seed_text, not Network.is_dedicated_server())
 	_place_chest()
+	_grow_forage()
 	if multiplayer.is_server() and items.get_child_count() == 0:
 		for spot in TEST_ITEMS:
 			_spawn_pickup(spot)
@@ -99,6 +106,18 @@ func drop_item(peer: int, item: String, count: int) -> void:
 	pickup.world = self
 	pickup.position = spot
 	items.add_child(pickup, true)
+
+
+func _grow_forage() -> void:
+	if forage != null:
+		# Out of the way first, so the new one gets the same name (and RPC path).
+		remove_child(forage)
+		forage.queue_free()
+	forage = Forage.new()
+	forage.name = "Forage"
+	forage.world = self
+	add_child(forage)
+	forage.setup(terrain.gen, Callable() if Network.is_dedicated_server() else terrain.surface_height)
 
 
 func _place_chest() -> void:

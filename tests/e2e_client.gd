@@ -8,7 +8,8 @@ extends SceneTree
 ## Registers (or logs in), creates, deletes and picks a character, and checks
 ## that the server spawns the player into the world with its race and sex. Then walks
 ## to an item, picks it up, moves it between slots, drops it on the ground and
-## picks it up again, puts it in the test chest and takes it back, and checks
+## picks it up again, puts it in the test chest and takes it back, picks food
+## off the nearest plant, and checks
 ## the inventory is still there after re-entering the world, and that the
 ## player comes back where they stood, facing the same way. Exits non-zero on
 ## failure.
@@ -203,6 +204,38 @@ func _check_inventory(world: Node, player: Node3D) -> void:
 	_picked_count = _count(session.inventory, _picked_item)
 	chest.close()
 	_check(not chest.is_open, "closes the chest")
+
+	await _check_foraging(world, player)
+	_picked_count = _count(session.inventory, _picked_item)
+
+
+## Walks to the nearest plant with food on it, picks it and checks the food
+## lands in the inventory and the server says the plant has been picked.
+func _check_foraging(world: Node, player: Node3D) -> void:
+	var session: Node = root.get_node("Session")
+	var forage: Node = world.forage
+	_check(forage != null and forage.spots.size() > 100, "food grows around the island")
+	if forage == null:
+		return
+	var index := -1
+	for i in forage.spots.size():
+		if forage.picks_left(i) > 0 and (index < 0 or forage.spots[i]["position"].distance_to(player.global_position)
+				< forage.spots[index]["position"].distance_to(player.global_position)):
+			index = i
+	var spot: Dictionary = forage.spots[index]
+	var kind: Dictionary = forage.KINDS[spot["kind"]]
+	var before := _count(session.inventory, kind["item"])
+	var had: int = forage.picks_left(index)
+	await _walk_to(player, spot["position"])
+	var plant: Node3D = forage.nearest_plant(player.global_position, world.INTERACT_RANGE)
+	_check(plant != null and plant.index == index, "stands next to a %s (%s)" % [spot["kind"], plant.prompt() if plant else "nothing"])
+	if plant == null:
+		return
+	var result: Array = await _call_and_wait(session.inventory_changed, plant.interact)
+	_check(_count(result[0], kind["item"]) == before + kind["yield"],
+		"picks %d %s from a %s" % [kind["yield"], kind["item"], spot["kind"]])
+	await create_timer(0.3).timeout
+	_check(forage.picks_left(index) == had - 1, "the server says the %s has been picked" % spot["kind"])
 
 
 ## Walks the local player to within a step of `target`, as if holding W

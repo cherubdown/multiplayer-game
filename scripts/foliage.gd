@@ -6,7 +6,7 @@ extends Node3D
 ## Two layers:
 ## - Shrubs (bushes, birches, logs and stumps) are scattered over the whole
 ##   island once, in regions that stop drawing far from the camera.
-## - Ground cover (grass, flowers, ferns, reeds and mushrooms) is far too dense
+## - Ground cover (grass, flowers, ferns and reeds) is far too dense
 ##   to build for the whole island, so it's built in small chunks around the
 ##   camera as it moves and freed behind it.
 ##
@@ -40,13 +40,13 @@ const SPAWN_CLEARING := 14.0
 ## tints it picks from.
 const COVER_DENSITY := {
 	Biome.MEADOWS: { "grass": 0.8, "flower": 0.09 },
-	Biome.BLACK_FOREST: { "fern": 0.1, "forest_grass": 0.3, "mushroom": 0.012 },
+	Biome.BLACK_FOREST: { "fern": 0.1, "forest_grass": 0.3 },
 	Biome.SWAMP: { "reeds": 0.1, "swamp_grass": 0.45 },
 	Biome.PLAINS: { "dry_grass": 0.55, "plains_flower": 0.02 },
 	Biome.MOUNTAINS: { "grass": 0.2 },
 }
 const SHRUB_DENSITY := {
-	Biome.MEADOWS: { "bush": 0.04, "berry_bush": 0.012, "birch": 0.014, "stump": 0.004 },
+	Biome.MEADOWS: { "bush": 0.04, "birch": 0.014, "stump": 0.004 },
 	Biome.BLACK_FOREST: { "bush": 0.05, "log": 0.02, "stump": 0.015 },
 	Biome.SWAMP: { "dead_bush": 0.04, "log": 0.015 },
 	Biome.PLAINS: { "shrub": 0.04 },
@@ -62,9 +62,7 @@ const PLANTS := {
 	"plains_flower": ["flower", Vector2(0.8, 1.1), [Color(1.0, 0.75, 0.2), Color(0.95, 0.4, 0.2)]],
 	"fern": ["fern", Vector2(0.8, 1.4), [Color(0.2, 0.4, 0.15), Color(0.25, 0.45, 0.17)]],
 	"reeds": ["reeds", Vector2(0.8, 1.2), [Color(0.45, 0.5, 0.26), Color(0.5, 0.52, 0.28)]],
-	"mushroom": ["mushroom", Vector2(0.8, 1.5), [Color(0.8, 0.15, 0.1), Color(0.55, 0.38, 0.22)]],
 	"bush": ["bush", Vector2(0.8, 1.5), [Color(0.3, 0.52, 0.2), Color(0.25, 0.45, 0.18), Color(0.35, 0.55, 0.22)]],
-	"berry_bush": ["berry_bush", Vector2(0.8, 1.1), [Color(0.28, 0.5, 0.2)]],
 	"birch": ["birch", Vector2(0.8, 1.2), [Color(0.55, 0.72, 0.28), Color(0.62, 0.75, 0.3)]],
 	"stump": ["stump", Vector2(0.8, 1.3), [Color(1, 1, 1)]],
 	"log": ["log", Vector2(0.8, 1.3), [Color(1, 1, 1)]],
@@ -74,10 +72,10 @@ const PLANTS := {
 ## Thin meshes seen from both sides. The rest are closed shapes.
 const TWO_SIDED := ["tuft", "flower", "fern", "reeds"]
 ## Meshes that cast shadows. Small plants don't, which saves a lot of drawing.
-const SHADOWED := ["bush", "berry_bush", "birch", "stump", "log", "dead_bush"]
+const SHADOWED := ["bush", "birch", "stump", "log", "dead_bush"]
 ## How far each mesh sways at its top.
 const SWAY := { "tuft": 0.12, "flower": 0.1, "fern": 0.06, "reeds": 0.18, "bush": 0.04,
-	"berry_bush": 0.04, "birch": 0.15, "dead_bush": 0.03 }
+	"birch": 0.15, "dead_bush": 0.03 }
 
 ## Ground cover is built from the same seed as the island.
 var seed_number := 0
@@ -344,11 +342,6 @@ func _shape_reeds(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
 			_sphere(st, root.lerp(tip, 0.88), Vector3(0.04, 0.12, 0.04), Color(0.35, 0.22, 0.12, 0.0), 5, 3, 1.0)
 
 
-func _shape_mushroom(st: SurfaceTool, _rng: RandomNumberGenerator) -> void:
-	_cylinder(st, Vector3.ZERO, Vector3.UP * 0.14, 0.03, 0.025, Color(0.9, 0.87, 0.78, 0.0), 6)
-	_sphere(st, Vector3.UP * 0.14, Vector3(0.11, 0.07, 0.11), Color(1, 1, 1, 1), 7, 4, 0.0, true)
-
-
 func _shape_bush(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
 	for n in 5:
 		var a := n * TAU / 5.0
@@ -357,15 +350,6 @@ func _shape_bush(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
 		var size := rng.randf_range(0.45, 0.6) if n else 0.65
 		var shade := rng.randf_range(0.8, 1.0)
 		_sphere(st, center, Vector3(size, size * 0.8, size), Color(shade, shade, shade, 1.0), 7, 5, center.y, false, true)
-
-
-func _shape_berry_bush(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
-	_shape_bush(st, rng)
-	for n in 14:
-		var a := rng.randf() * TAU
-		var up := rng.randf_range(0.2, 0.9)
-		var dir := Vector3(cos(a) * (1.0 - up * 0.5), up, sin(a) * (1.0 - up * 0.5)).normalized()
-		_sphere(st, Vector3.UP * 0.6 + dir * 0.72, Vector3.ONE * 0.06, Color(0.75, 0.08, 0.12, 0.0), 4, 3, 0.8)
 
 
 func _shape_birch(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
@@ -438,7 +422,7 @@ func _tri(st: SurfaceTool, points: Array, color: Color, sway: float) -> void:
 		_vertex(st, p, normal, color, sway)
 
 
-## A low-poly ellipsoid. `half` keeps only the top half, for mushroom caps.
+## A low-poly ellipsoid. `half` keeps only the top half.
 ## `soft` tilts its normals upward, so leafy clumps aren't dark underneath.
 func _sphere(st: SurfaceTool, center: Vector3, radii: Vector3, color: Color, segments: int,
 		rings: int, sway: float, half: bool = false, soft: bool = false) -> void:
