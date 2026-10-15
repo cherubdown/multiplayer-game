@@ -26,8 +26,8 @@ const COVER_CELL := 0.7
 ## last stretch.
 const COVER_RADIUS := 64.0
 const COVER_FADE_START := 46.0
-## Chunks built per frame, so walking doesn't hitch.
-const CHUNKS_PER_FRAME := 2
+## Chunks built per frame (about 5 ms each), so walking doesn't hitch.
+const CHUNKS_PER_FRAME := 1
 
 const SHRUB_CELL := 4.0
 const SHRUB_REGION := 128.0
