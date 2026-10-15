@@ -2,8 +2,8 @@ extends CanvasLayer
 ## The local player's inventory screen, the chest screen and the "E" prompt.
 ## Added to the world on every peer that has a player (not a dedicated server).
 ##
-## Tab (or I) shows the inventory. E picks up the nearest item or opens the
-## nearest chest. Drag a stack onto another slot to move it (in the inventory,
+## Tab (or I) shows the inventory. E picks up the nearest item, picks the
+## nearest plant (see scripts/forage.gd) or opens the nearest chest. Drag a stack onto another slot to move it (in the inventory,
 ## in the chest or between the two), or off the panels to drop it on the
 ## ground; with a chest open, clicking a stack also sends it across. Hovering a
 ## stack says what it is. Esc, Tab or E closes the screen again. All of it only
@@ -87,6 +87,11 @@ func _target() -> Node3D:
 		if distance <= best_distance:
 			best = node
 			best_distance = distance
+	var forage: Node = get_parent().get("forage")
+	if forage != null:
+		var plant: Node3D = forage.nearest_plant(player.global_position, best_distance)
+		if plant != null:
+			best = plant
 	return best
 
 

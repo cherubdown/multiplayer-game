@@ -41,7 +41,20 @@ The island is 1 km across and ringed by ocean. Like Valheim, it gets harsher awa
 | Mountains | Wherever the land rises high, with snow on the peaks. |
 | Ocean | Around the edge, and in lakes inland. |
 
-Each biome also has its own plants: grass and wildflowers in the Meadows, ferns, mushrooms and fallen logs in the Black Forest, reeds and cattails in the Swamp, dry grass on the Plains, plus bushes and birches. They sway in the wind and grow in the same places for everyone. Trees, rocks and plants are scenery for now: you can walk through them.
+Each biome also has its own plants: grass and wildflowers in the Meadows, ferns and fallen logs in the Black Forest, reeds and cattails in the Swamp, dry grass on the Plains, plus bushes and birches. They sway in the wind and grow in the same places for everyone. Trees, rocks and plants are scenery for now: you can walk through them.
+
+### Food to pick
+
+Food grows wild across the island, in the same places for everyone on the same seed. Walk up to a plant and press **E** to pick it:
+
+| Plant | Gives | Where | How common |
+| :--- | :--- | :--- | :--- |
+| Mushrooms | 1 mushroom | Black Forest, Meadows, Swamp | Common |
+| Raspberry bush | 4 raspberries | Meadows, Plains, Black Forest | Common |
+| Blueberry bush | 3 blueberries | Black Forest, Meadows, Mountains | Less common |
+| Apple tree | 1 apple per pick, 3 to 6 on a tree | Meadows, sometimes the Plains | Rare |
+
+The server decides what's been picked, so two players can't pick the same bush, and everyone sees it bare. Picked plants grow back: mushrooms after 5 minutes, raspberries after 4 and blueberries after 6, and an apple tree grows one apple back every 2 minutes. If your inventory is full, whatever doesn't fit drops at your feet. What's been picked is forgotten when the server restarts, so everything starts fully grown. The kinds, how much they give, how fast they grow back and how common they are in each biome are at the top of `scripts/forage.gd`.
 
 The first time you host or run a server, Windows Firewall asks whether to allow Godot on the network. Allow it on private networks, and forward UDP port 7777 on your router if friends join over the internet.
 
