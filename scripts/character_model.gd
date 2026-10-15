@@ -12,6 +12,7 @@ extends Node3D
 ## servers skip them.
 
 const Races := preload("res://scripts/races.gd")
+const Items := preload("res://scripts/items.gd")
 
 ## Speeds (m/s) the walk and run animations were made for, for legs as long as
 ## REFERENCE_LEG. Shorter legs play them faster so the feet don't slide.
@@ -56,6 +57,10 @@ var _rest := {}     # joint name -> rest rotation (radians)
 var _stride := 1.0
 var _animation: AnimationPlayer
 var _current := ""
+var _held: MeshInstance3D
+## The one-off animation playing (see play_once()), which set_motion() leaves
+## alone until it ends.
+var _one_shot := ""
 
 
 static func can_show_models() -> bool:
@@ -80,7 +85,7 @@ func setup(p_race: String, p_sex: String = Races.DEFAULT_SEX) -> bool:
 
 ## horizontal_speed in m/s; airborne while jumping or falling.
 func set_motion(horizontal_speed: float, airborne: bool) -> void:
-	if _animation == null:
+	if _animation == null or _one_shot != "":
 		return
 	if airborne:
 		_play("Jump_Idle", 1.0)
@@ -92,15 +97,37 @@ func set_motion(horizontal_speed: float, airborne: bool) -> void:
 		_play("Running_A", clampf(horizontal_speed / (RUN_ANIM_SPEED * _stride), 0.7, 2.2))
 
 
+## Puts a tool (an item id from scripts/items.gd) in the right hand, or
+## empties it with "".
+func set_held(item: String) -> void:
+	if _held != null:
+		_held.queue_free()
+		_held = null
+	if item == "" or not _joints.has("Hand_R"):
+		return
+	_held = MeshInstance3D.new()
+	_held.name = "Held"
+	_held.mesh = Items.tool_mesh(item)
+	# Gripped in the fist, pointing forward when the arm hangs down.
+	_held.position = Vector3(0.0, -_body["arm_r"] * 0.95, 0.0)
+	_held.rotation = Vector3(deg_to_rad(-90.0), 0.0, 0.0)
+	_held.scale = Vector3.ONE * clampf(_stride, 0.8, 1.5)
+	_joints["Hand_R"].add_child(_held)
+
+
 ## Plays a one-off animation such as "Cheer", then goes back to looping.
 func play_once(anim_name: String) -> void:
 	if _animation and _animation.has_animation(anim_name):
 		_current = anim_name
+		_one_shot = anim_name
 		_animation.speed_scale = 1.0
-		_animation.play(anim_name, BLEND)
+		# Starting over from the top lets a swing follow a swing.
+		_animation.stop()
+		_animation.play(anim_name, BLEND * 0.5)
 		await _animation.animation_finished
 		if _current == anim_name:
 			_current = ""
+			_one_shot = ""
 			_play("Idle", 1.0)
 
 
@@ -377,6 +404,20 @@ func _build_animations() -> void:
 	}
 	library.add_animation("Cheer", _animation_from(1.5, false,
 		[[0.0, idle_a], [0.25, arms_up], [0.5, hop], [0.75, arms_up], [1.0, hop], [1.5, idle_a]]))
+
+	# Swinging a tool overhead with the right hand, then down in front.
+	var wind_up := {
+		"ArmUpper_R": Vector3(165, 0, 10), "ArmLower_R": Vector3(45, 0, 0),
+		"ArmUpper_L": Vector3(20, 0, -10), "ArmLower_L": Vector3(30, 0, 0),
+		"Spine": Vector3(-8, -15, 0), "Head": Vector3(-4, 10, 0),
+	}
+	var strike := {
+		"ArmUpper_R": Vector3(45, 0, 0), "ArmLower_R": Vector3(10, 0, 0),
+		"ArmUpper_L": Vector3(10, 0, 0), "ArmLower_L": Vector3(20, 0, 0),
+		"Spine": Vector3(14, 12, 0), "Head": Vector3(-6, -6, 0), "lift": -0.01,
+	}
+	library.add_animation("Swing", _animation_from(0.6, false,
+		[[0.0, idle_a], [0.22, wind_up], [0.34, strike], [0.6, idle_a]]))
 
 	_animation = AnimationPlayer.new()
 	_animation.name = "AnimationPlayer"

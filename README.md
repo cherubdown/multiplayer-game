@@ -41,20 +41,22 @@ The island is 1 km across and ringed by ocean. Like Valheim, it gets harsher awa
 | Mountains | Wherever the land rises high, with snow on the peaks. |
 | Ocean | Around the edge, and in lakes inland. |
 
-Each biome also has its own plants: grass and wildflowers in the Meadows, ferns and fallen logs in the Black Forest, reeds and cattails in the Swamp, dry grass on the Plains, plus bushes and birches. They sway in the wind and grow in the same places for everyone. Trees, rocks and plants are scenery for now: you can walk through them.
+Each biome also has its own plants: grass and wildflowers in the Meadows, ferns and fallen logs in the Black Forest, reeds and cattails in the Swamp, dry grass on the Plains, plus bushes and birches. They sway in the wind and grow in the same places for everyone. The big trees and rocks are solid, so you have to go around them (or cut them down, see [Crafting and tools](#crafting-and-tools)); the smaller plants are scenery you can walk through.
 
-### Food to pick
+### Things to pick up
 
-Food grows wild across the island, in the same places for everyone on the same seed. Walk up to a plant and press **E** to pick it:
+Food grows wild across the island, and fallen branches and loose stones lie about, in the same places for everyone on the same seed. Walk up to one and press **E** to pick it:
 
-| Plant | Gives | Where | How common |
+| What | Gives | Where | How common |
 | :--- | :--- | :--- | :--- |
 | Mushrooms | 1 mushroom | Black Forest, Meadows, Swamp | Common |
 | Raspberry bush | 4 raspberries | Meadows, Plains, Black Forest | Common |
 | Blueberry bush | 3 blueberries | Black Forest, Meadows, Mountains | Less common |
 | Apple tree | 1 apple per pick, 3 to 6 on a tree | Meadows, sometimes the Plains | Rare |
+| Fallen branches | 2 wood | Black Forest, Meadows, Swamp, Plains | Common |
+| Loose stones | 2 stone | Mountains, Plains, Meadows, Black Forest | Common |
 
-The server decides what's been picked, so two players can't pick the same bush, and everyone sees it bare. Picked plants grow back: mushrooms after 5 minutes, raspberries after 4 and blueberries after 6, and an apple tree grows one apple back every 2 minutes. If your inventory is full, whatever doesn't fit drops at your feet. What's been picked is forgotten when the server restarts, so everything starts fully grown. The kinds, how much they give, how fast they grow back and how common they are in each biome are at the top of `scripts/forage.gd`.
+The server decides what's been picked, so two players can't pick the same bush, and everyone sees it bare. Picked plants grow back: mushrooms after 5 minutes, raspberries after 4 and blueberries after 6, and an apple tree grows one apple back every 2 minutes. Branches come back after 5 minutes and stones after 6. If your inventory is full, whatever doesn't fit drops at your feet. What's been picked is forgotten when the server restarts, so everything starts fully grown. The kinds, how much they give, how fast they grow back and how common they are in each biome are at the top of `scripts/forage.gd`.
 
 The first time you host or run a server, Windows Firewall asks whether to allow Godot on the network. Allow it on private networks, and forward UDP port 7777 on your router if friends join over the internet.
 
@@ -112,6 +114,22 @@ To try two players on one machine, start one copy with `--host` and another with
 
 Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never build the models.
 
+### Crafting and tools
+
+The inventory screen (**Tab**) has a **Crafting** window on its right. Each recipe shows what it makes and what it takes, with how many of each you have (green when you have enough, red when you don't). Press **Craft** to make it:
+
+| Recipe | Takes | Does |
+| :--- | :--- | :--- |
+| Stone Axe | 5 wood, 3 stone | Chops down trees |
+| Stone Pickaxe | 5 wood, 5 stone | Breaks big rocks |
+| Stone Sword | 5 wood, 5 stone | A weapon, for when there's something to fight |
+
+Crafting happens on the server, which checks you have everything and room for what you make. A tool you craft with empty hands goes straight into your hand. Otherwise right-click a tool in your inventory to hold it, and right-click it again to put it away; the tool in your hand has a gold border, and everyone sees you holding it.
+
+Holding an axe, walk up to a tree and left-click to swing at it. A pine takes 6 hits, a leafy tree 5 and a dead tree 3, and when it comes down it drops 2 to 7 wood on the ground where it stood, for anyone to pick up. A pickaxe breaks the big rocks in 6 hits for 4 to 7 stone. The prompt at the bottom of the screen says which tool something needs and how many hits are left. Everyone sees each hit and sees it come down. Felled trees grow back after 8 to 10 minutes, and rocks after 15, though never on top of someone standing there.
+
+The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
+
 ## Layout
 
 - `scripts/network.gd` is the `Network` autoload that owns the `ENetMultiplayerPeer` and the three launch modes.
@@ -120,8 +138,10 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 - `scripts/account_store.gd` (`AccountStore`) saves accounts, password hashes, characters and the world seed on the server in SQLite, creating and upgrading the tables as needed.
 - `addons/godot-sqlite/` is the vendored SQLite extension.
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the game world. It builds the terrain once the world seed is known, and on the server spawns a player per peer through a `MultiplayerSpawner`.
-- `scripts/world_gen.gd` turns a seed into the island's heights and biomes (deterministic noise, so every peer agrees). `scripts/terrain.gd` builds the ground collision from it, plus the biome-colored ground, sea, trees and rocks on peers that draw.
+- `scripts/world_gen.gd` turns a seed into the island's heights and biomes (deterministic noise, so every peer agrees). `scripts/terrain.gd` builds the ground collision from it, plus the biome-colored ground and sea on peers that draw.
+- `scripts/harvestables.gd` places the trees and big rocks from the seed, makes them solid on every peer, and handles chopping and breaking them. `scripts/forage.gd` does the same for the things you pick up with **E**.
+- `scripts/items.gd` lists every kind of item, including tools. `scripts/recipes.gd` lists what can be crafted, and `scripts/inventory_ui.gd` draws the inventory, chest and crafting windows.
 - `scripts/races.gd` defines the races and their body measurements; `scripts/character_model.gd` builds and animates the model for a race and sex, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
-- `tests/` has headless tests for the account store, the world generator and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
+- `tests/` has headless tests for the account store, the world generator, foraging, crafting, chopping trees and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.

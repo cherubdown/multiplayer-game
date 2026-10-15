@@ -61,6 +61,14 @@ echo "::group::Inventory"
 "$GODOT" --headless --path . -s tests/test_inventory.gd
 echo "::endgroup::"
 
+echo "::group::Crafting"
+"$GODOT" --headless --path . -s tests/test_crafting.gd
+echo "::endgroup::"
+
+echo "::group::Trees and rocks"
+"$GODOT" --headless --path . -s tests/test_harvestables.gd
+echo "::endgroup::"
+
 echo "::group::Login and character select against a listen-server host"
 timeout 60 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.db
 echo "::endgroup::"

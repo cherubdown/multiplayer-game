@@ -5,8 +5,13 @@ extends RefCounted
 ##
 ## Icons are SVG drawn in code, so they load on a fresh checkout without the
 ## editor having imported anything.
+##
+## An item with a "tool" entry can be held in the hand and swung with the left
+## mouse button. Its "type" says what it's good for (see scripts/harvestables.gd
+## for what each type can break).
 
-const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple"]
+const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple",
+	"stone_axe", "stone_pickaxe", "stone_sword"]
 
 const INFO := {
 	"wood": {
@@ -57,6 +62,30 @@ const INFO := {
 		"max_stack": 50,
 		"color": Color(0.8, 0.12, 0.1),
 		"shape": "apple",
+	},
+	"stone_axe": {
+		"name": "Stone Axe",
+		"description": "A stone head lashed to a wooden haft. Hold it and click to chop down trees for wood.",
+		"max_stack": 1,
+		"color": Color(0.55, 0.55, 0.58),
+		"shape": "tool",
+		"tool": { "type": "axe", "damage": 1 },
+	},
+	"stone_pickaxe": {
+		"name": "Stone Pickaxe",
+		"description": "A pointed stone head on a wooden haft. Hold it and click to break big rocks for stone.",
+		"max_stack": 1,
+		"color": Color(0.55, 0.55, 0.58),
+		"shape": "tool",
+		"tool": { "type": "pickaxe", "damage": 1 },
+	},
+	"stone_sword": {
+		"name": "Stone Sword",
+		"description": "A ground stone blade on a wooden grip. Crude, but it has an edge.",
+		"max_stack": 1,
+		"color": Color(0.55, 0.55, 0.58),
+		"shape": "tool",
+		"tool": { "type": "sword", "damage": 2 },
 	},
 }
 
@@ -110,9 +139,31 @@ const ICONS := {
 		<path d="M35 14 C40 8 48 9 50 12 C45 15 40 15 35 14 Z" fill="#4fa548" stroke="#1f4d1c" stroke-width="1.5"/>
 		<path d="M18 28 C19 24 22 22 25 22" fill="none" stroke="#ff9a8a" stroke-width="3" stroke-linecap="round"/>
 	</svg>""",
+	"stone_axe": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M18 58 L44 12" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
+		<path d="M18 58 L44 12" stroke="#9a6430" stroke-width="5" stroke-linecap="round"/>
+		<path d="M36 16 C40 6 54 6 60 14 C58 24 50 30 42 30 Z" fill="#8c8c92" stroke="#3c3c42" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M48 9 C54 10 58 13 59 16" fill="none" stroke="#d4d4da" stroke-width="2.5" stroke-linecap="round"/>
+		<path d="M36 22 L46 26" stroke="#c9a46a" stroke-width="3"/>
+	</svg>""",
+	"stone_pickaxe": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M20 58 L42 14" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
+		<path d="M20 58 L42 14" stroke="#9a6430" stroke-width="5" stroke-linecap="round"/>
+		<path d="M8 18 C20 6 44 4 58 14 C46 12 36 14 42 18 C36 16 24 16 8 18 Z" fill="#8c8c92" stroke="#3c3c42" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M14 15 C24 9 38 8 50 10" fill="none" stroke="#d4d4da" stroke-width="2" stroke-linecap="round"/>
+	</svg>""",
+	"stone_sword": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M28 34 L52 8 L58 6 L56 12 L30 36 Z" fill="#8c8c92" stroke="#3c3c42" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M32 32 L54 9" stroke="#d4d4da" stroke-width="2" stroke-linecap="round"/>
+		<path d="M20 30 L34 44" stroke="#3b220e" stroke-width="7" stroke-linecap="round"/>
+		<path d="M20 30 L34 44" stroke="#7a4a22" stroke-width="4" stroke-linecap="round"/>
+		<path d="M28 40 L12 56" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
+		<path d="M28 40 L12 56" stroke="#9a6430" stroke-width="5" stroke-linecap="round"/>
+	</svg>""",
 }
 
 static var _icon_cache := {}
+static var _tool_meshes := {}
 
 
 static func is_valid(item: String) -> bool:
@@ -129,6 +180,21 @@ static func max_stack(item: String) -> int:
 
 static func color(item: String) -> Color:
 	return INFO[item]["color"] if INFO.has(item) else Color.MAGENTA
+
+
+## What kind of tool the item is ("axe", "pickaxe", "sword"), or "" if it
+## isn't one.
+static func tool_type(item: String) -> String:
+	return INFO[item]["tool"]["type"] if INFO.has(item) and INFO[item].has("tool") else ""
+
+
+static func is_tool_item(item: String) -> bool:
+	return tool_type(item) != ""
+
+
+## How much one swing of the tool does.
+static func tool_damage(item: String) -> int:
+	return INFO[item]["tool"]["damage"] if is_tool_item(item) else 0
 
 
 ## What the item is for, for tooltips.
@@ -152,6 +218,8 @@ static func icon(item: String) -> Texture2D:
 ## A small mesh for an item lying on the ground, about 0.4 m across.
 static func mesh(item: String) -> Mesh:
 	var shape: String = INFO[item]["shape"] if INFO.has(item) else ""
+	if shape == "tool":
+		return tool_mesh(item)
 	var result: PrimitiveMesh
 	match shape:
 		"log":
@@ -193,3 +261,52 @@ static func mesh(item: String) -> Mesh:
 	mat.albedo_color = color(item)
 	result.material = mat
 	return result
+
+
+## A tool as it's held: the grip at the origin and the haft along +Y, with the
+## head at the far end. Lying on the ground it's the same mesh.
+static func tool_mesh(item: String) -> Mesh:
+	if _tool_meshes.has(item):
+		return _tool_meshes[item]
+	var wood := Color(0.5, 0.32, 0.16)
+	var stone := Color(0.52, 0.52, 0.55)
+	var mesh := ArrayMesh.new()
+	match tool_type(item):
+		"axe":
+			_tool_part(mesh, _box(Vector3(0.05, 0.75, 0.05)), Vector3(0.0, 0.3, 0.0), wood)
+			_tool_part(mesh, _prism(Vector3(0.22, 0.2, 0.06)), Vector3(0.0, 0.56, -0.1), stone,
+				Vector3(0.0, 0.0, deg_to_rad(90.0)))
+		"pickaxe":
+			_tool_part(mesh, _box(Vector3(0.05, 0.75, 0.05)), Vector3(0.0, 0.3, 0.0), wood)
+			_tool_part(mesh, _prism(Vector3(0.08, 0.24, 0.06)), Vector3(0.0, 0.6, -0.14), stone,
+				Vector3(deg_to_rad(-90.0), 0.0, 0.0))
+			_tool_part(mesh, _prism(Vector3(0.08, 0.18, 0.06)), Vector3(0.0, 0.6, 0.11), stone,
+				Vector3(deg_to_rad(90.0), 0.0, 0.0))
+		_:
+			_tool_part(mesh, _box(Vector3(0.05, 0.2, 0.05)), Vector3(0.0, 0.0, 0.0), wood)
+			_tool_part(mesh, _box(Vector3(0.22, 0.04, 0.06)), Vector3(0.0, 0.12, 0.0), wood.darkened(0.3))
+			_tool_part(mesh, _prism(Vector3(0.08, 0.7, 0.02)), Vector3(0.0, 0.49, 0.0), stone)
+	_tool_meshes[item] = mesh
+	return mesh
+
+
+static func _tool_part(mesh: ArrayMesh, part: PrimitiveMesh, at: Vector3, part_color: Color, turn := Vector3.ZERO) -> void:
+	var st := SurfaceTool.new()
+	st.append_from(part, 0, Transform3D(Basis.from_euler(turn), at))
+	st.commit(mesh)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = part_color
+	mat.roughness = 0.85
+	mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
+
+
+static func _box(size: Vector3) -> BoxMesh:
+	var box := BoxMesh.new()
+	box.size = size
+	return box
+
+
+static func _prism(size: Vector3) -> PrismMesh:
+	var prism := PrismMesh.new()
+	prism.size = size
+	return prism
