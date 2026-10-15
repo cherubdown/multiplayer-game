@@ -46,6 +46,7 @@ func _run() -> void:
 	var names: Array = terrain.get_children().map(func(n: Node) -> String: return n.name)
 	_check("Ground" in names and "GroundMesh" in names and "Sea" in names, "terrain builds collision, mesh and sea")
 	_check(names.any(func(n: String) -> bool: return n.ends_with("s") and n != "Ground"), "terrain scatters decorations")
+	_check_foliage(terrain)
 	terrain.build("hello world", false)
 	await process_frame
 	names = terrain.get_children().map(func(n: Node) -> String: return n.name)
@@ -76,6 +77,31 @@ func _check_world(gen: WorldGen) -> void:
 	var edge := WorldGen.SIZE * 0.5 - 1.0
 	_check(gen.biome_at(edge, 0.0) == WorldGen.Biome.OCEAN and gen.biome_at(0.0, -edge) == WorldGen.Biome.OCEAN,
 		"seed \"%s\" is surrounded by ocean" % gen.seed_text)
+
+
+## Plants grow from the seed, the same on every peer, with grass around the
+## spawn.
+func _check_foliage(terrain: Node3D) -> void:
+	var foliage: Node3D = terrain.get_node_or_null("Foliage")
+	_check(foliage != null, "terrain grows foliage")
+	if foliage == null:
+		return
+	var shrubs := foliage.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Shrubs_"))
+	_check(shrubs.size() > 10, "bushes and birches are scattered over the island")
+	var cover: Dictionary = foliage.cover_for_chunk(Vector2i(0, 0))
+	_check(cover.has("tuft") and cover["tuft"][0].size() > 200, "the spawn meadow is covered in grass")
+	var again: Dictionary = foliage.cover_for_chunk(Vector2i(0, 0))
+	_check(cover.keys() == again.keys() and cover["tuft"][0] == again["tuft"][0], "ground cover is the same every time")
+	var other := Terrain.new()
+	root.add_child(other)
+	other.build("Hello world")
+	var different: Dictionary = other.get_node("Foliage").cover_for_chunk(Vector2i(0, 0))
+	_check(different.get("tuft", [[]])[0] != cover["tuft"][0], "a different seed grows different ground cover")
+	other.queue_free()
+	foliage.update_cover(Vector3.ZERO, 1000)
+	_check(foliage.cover_chunk_count() > 10, "ground cover is built around the camera")
+	foliage.update_cover(Vector3(300, 0, 300), 0)
+	_check(foliage.cover_chunk_count() == 0, "ground cover far from the camera is freed")
 
 
 func _check(ok: bool, what: String) -> void:

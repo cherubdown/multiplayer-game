@@ -41,7 +41,7 @@ The island is 1 km across and ringed by ocean. Like Valheim, it gets harsher awa
 | Mountains | Wherever the land rises high, with snow on the peaks. |
 | Ocean | Around the edge, and in lakes inland. |
 
-Trees and rocks are scenery for now: you can walk through them.
+Each biome also has its own plants: grass and wildflowers in the Meadows, ferns, mushrooms and fallen logs in the Black Forest, reeds and cattails in the Swamp, dry grass on the Plains, plus bushes and birches. They sway in the wind and grow in the same places for everyone. Trees, rocks and plants are scenery for now: you can walk through them.
 
 The first time you host or run a server, Windows Firewall asks whether to allow Godot on the network. Allow it on private networks, and forward UDP port 7777 on your router if friends join over the internet.
 

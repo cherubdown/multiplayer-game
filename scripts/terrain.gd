@@ -1,9 +1,11 @@
 extends Node3D
 ## The generated island: ground collision on every peer, plus the ground mesh
-## colored by biome, the sea, and trees and rocks on peers that draw anything.
+## colored by biome, the sea, trees and rocks, and plants (see foliage.gd) on
+## peers that draw anything.
 ## build() makes it from a seed string; the same seed gives the same world.
 
 const WorldGen := preload("res://scripts/world_gen.gd")
+const Foliage := preload("res://scripts/foliage.gd")
 
 ## Meters between terrain vertices. The ground is (SIZE / STEP + 1)^2 points.
 const STEP := 4.0
@@ -11,6 +13,9 @@ const STEP := 4.0
 var gen: WorldGen
 ## Heights on the vertex grid, row by row (z), then column (x).
 var _heights := PackedFloat32Array()
+## Biome at each vertex, laid out like _heights. Only filled on peers that
+## draw the world.
+var _biomes := PackedByteArray()
 var _cells := 0
 
 
@@ -21,6 +26,7 @@ func build(seed_text: String, visuals: bool = true) -> void:
 		remove_child(child)
 		child.queue_free()
 	gen = WorldGen.new(seed_text)
+	_biomes = PackedByteArray()
 	var started := Time.get_ticks_msec()
 	_sample_heights()
 	_build_collision()
@@ -28,12 +34,46 @@ func build(seed_text: String, visuals: bool = true) -> void:
 		_build_ground_mesh()
 		_build_sea()
 		_build_decorations()
+		var foliage := Foliage.new()
+		foliage.name = "Foliage"
+		add_child(foliage)
+		foliage.setup(gen.seed_number, surface_height, biome_near)
 	print("Built the world from seed \"%s\" in %d ms" % [seed_text, Time.get_ticks_msec() - started])
 
 
 ## Height of the ground at (x, z), matching the collision shape.
 func ground_height(x: float, z: float) -> float:
 	return gen.height_at(x, z) if gen else 0.0
+
+
+## Height of the drawn ground mesh at (x, z), which is flat between its
+## vertices. Much cheaper than ground_height(), so it's what plants stand on.
+func surface_height(x: float, z: float) -> float:
+	var points := _cells + 1
+	var gx := clampf((x + WorldGen.SIZE * 0.5) / STEP, 0.0, _cells - 0.001)
+	var gz := clampf((z + WorldGen.SIZE * 0.5) / STEP, 0.0, _cells - 0.001)
+	var i := int(gx)
+	var j := int(gz)
+	var fx := gx - i
+	var fz := gz - j
+	var a := _heights[j * points + i]
+	var b := _heights[j * points + i + 1]
+	var c := _heights[(j + 1) * points + i]
+	var d := _heights[(j + 1) * points + i + 1]
+	# Same two triangles per cell as the mesh: a-b-c and b-d-c.
+	if fx + fz <= 1.0:
+		return a + (b - a) * fx + (c - a) * fz
+	return d + (c - d) * (1.0 - fx) + (b - d) * (1.0 - fz)
+
+
+## Biome of the ground mesh vertex nearest (x, z).
+func biome_near(x: float, z: float) -> WorldGen.Biome:
+	if _biomes.is_empty():
+		return gen.biome_at(x, z)
+	var points := _cells + 1
+	var i := clampi(roundi((x + WorldGen.SIZE * 0.5) / STEP), 0, _cells)
+	var j := clampi(roundi((z + WorldGen.SIZE * 0.5) / STEP), 0, _cells)
+	return _biomes[j * points + i] as WorldGen.Biome
 
 
 func _sample_heights() -> void:
@@ -72,6 +112,12 @@ func _build_ground_mesh() -> void:
 	vertices.resize(points * points)
 	normals.resize(points * points)
 	colors.resize(points * points)
+	_biomes.resize(points * points)
+	# Soft patches of lighter and darker ground, so it isn't one flat color.
+	var patches := FastNoiseLite.new()
+	patches.seed = int(gen.seed_number & 0x7FFFFFFF) ^ 0x6A7
+	patches.frequency = 1.0 / 30.0
+	patches.fractal_octaves = 2
 	for j in points:
 		for i in points:
 			var k := j * points + i
@@ -84,7 +130,11 @@ func _build_ground_mesh() -> void:
 			var up := _heights[k - points] if j > 0 else h
 			var down := _heights[k + points] if j < _cells else h
 			normals[k] = Vector3(left - right, 2.0 * STEP, up - down).normalized()
-			var color: Color = WorldGen.BIOME_COLORS[gen.biome_for(x, z, h)]
+			var biome := gen.biome_for(x, z, h)
+			_biomes[k] = biome
+			var color: Color = WorldGen.BIOME_COLORS[biome]
+			var patch := patches.get_noise_2d(x, z)
+			color = color.lerp(color * Color(1.15, 1.12, 0.85) if patch > 0.0 else color * 0.82, absf(patch) * 1.2)
 			# Steep slopes show bare rock.
 			color = color.lerp(Color(0.3, 0.28, 0.26), smoothstep(0.75, 0.55, normals[k].y))
 			# Snow on the peaks.
