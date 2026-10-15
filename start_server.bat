@@ -1,1 +1,1 @@
-Godot_v4.7.2-stable_win64_console.exe --headless --path . --server --server-password=test
+Godot_v4.7.2-stable_win64_console.exe --headless --path . --server
