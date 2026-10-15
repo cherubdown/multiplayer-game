@@ -125,10 +125,13 @@ func _run() -> void:
 			"faces the same way (%.2f, left facing %.2f)" % [player.global_rotation.y, left_facing])
 		var input: Node = player.get_node("PlayerInput")
 		_check(absf(angle_difference(input.yaw, left_facing)) < 0.05, "the camera looks the way the character faces")
-	await _call_and_wait(session.left_world, session.leave_world)
 
 	print("E2E: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
+	# Disconnect while still in the world, as the menu's Leave button does. The
+	# server must cope with a player vanishing mid-game (run-tests.sh checks
+	# the dedicated server's log for errors).
 	network.disconnect_from_game()
+	await create_timer(0.5).timeout
 	quit(1 if _failures > 0 else 0)
 
 

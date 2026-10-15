@@ -466,9 +466,12 @@ func _save_position(peer: int) -> void:
 
 
 func _broadcast_roster() -> void:
-	# Only peers that have logged in hear about who is playing.
+	# Only peers that have logged in hear about who is playing. Skip any that
+	# are already gone, such as a player who just disconnected from the world.
+	var connected := multiplayer.get_peers()
 	for peer in _usernames:
-		_set_roster.rpc_id(peer, _in_world)
+		if peer == multiplayer.get_unique_id() or peer in connected:
+			_set_roster.rpc_id(peer, _in_world)
 
 
 func _on_peer_connected(peer: int) -> void:
