@@ -19,6 +19,8 @@ config/features=PackedStringArray("4.3", "Forward Plus")
 
 Network="*res://scripts/network.gd"
 Session="*res://scripts/session.gd"
+Settings="*res://scripts/settings.gd"
+OptionsMenu="*res://scripts/options_menu.gd"
 
 [input]
 
