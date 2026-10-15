@@ -49,6 +49,10 @@ echo "::group::AccountStore"
 "$GODOT" --headless --path . -s tests/test_account_store.gd
 echo "::endgroup::"
 
+echo "::group::Settings and options window"
+"$GODOT" --headless --path . -s tests/test_settings.gd
+echo "::endgroup::"
+
 echo "::group::Inventory"
 "$GODOT" --headless --path . -s tests/test_inventory.gd
 echo "::endgroup::"

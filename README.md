@@ -75,6 +75,12 @@ Passwords are never stored: the database holds a random per-account salt and a P
 
 The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-sqlite) extension (MIT licensed), vendored in `addons/godot-sqlite/` with its Windows and Linux x86_64 libraries. Exports copy the DLL next to the .exe, so keep the two together when you move a server build.
 
+## Options
+
+The **Options** button in the bottom left corner opens the options window from any screen: the Host / Join menu, login, character select, and in the world (press Esc first to free the mouse). For now it has one setting, **Full screen** on the Display tab. Changes take effect straight away and are saved on your PC in `settings.cfg` in the same user data folder as above, so they stick between launches. Esc or **Close** shuts the window.
+
+To add a setting, declare it in `DEFINITIONS` in `scripts/settings.gd` (a toggle, slider or choice, with its tab, label and default). The options window builds its tabs and controls from that list, so it shows up there and saves without further work; add a line to `_apply()` if it needs to change something in the engine.
+
 ## Playing
 
 Once you pick a character you're on the island: a new character starts in the Meadows, and after that you come back where you left off, facing the same way. The server saves where every character stands when they leave the world or disconnect, and every 15 seconds in case it stops without warning. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
