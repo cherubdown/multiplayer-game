@@ -18,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -85,10 +85,10 @@ func list_characters(username: String) -> Array:
 	if not is_open():
 		return []
 	_db.query_with_bindings(
-		"SELECT c.name, c.race, c.created FROM characters c JOIN accounts a ON a.id = c.account_id"
+		"SELECT c.name, c.race, c.sex, c.created FROM characters c JOIN accounts a ON a.id = c.account_id"
 		+ " WHERE a.username = ? ORDER BY c.id", [username.to_lower()])
 	return _db.query_result.map(func(row: Dictionary) -> Dictionary:
-		return { "name": row["name"], "race": row["race"], "created": row["created"] })
+		return { "name": row["name"], "race": row["race"], "sex": row["sex"], "created": row["created"] })
 
 
 func has_character(username: String, character_name: String) -> bool:
@@ -96,12 +96,17 @@ func has_character(username: String, character_name: String) -> bool:
 	return list_characters(username).any(func(c: Dictionary) -> bool: return str(c["name"]).to_lower() == target)
 
 
-func create_character(username: String, character_name: String, race: String = Races.DEFAULT) -> String:
+## New characters start with an empty inventory (and in the clothes every
+## model wears; see scripts/character_model.gd).
+func create_character(username: String, character_name: String, race: String = Races.DEFAULT,
+		sex: String = Races.DEFAULT_SEX) -> String:
 	var account := _account(username)
 	if account.is_empty():
 		return "Not logged in."
 	if not Races.is_valid(race):
 		return "Pick a race for your character."
+	if not Races.is_valid_sex(sex):
+		return "Pick male or female for your character."
 	character_name = character_name.strip_edges()
 	if not _character_regex.search(character_name):
 		return "Character names are 2 to 16 letters, starting with a letter."
@@ -110,8 +115,8 @@ func create_character(username: String, character_name: String, race: String = R
 	if list_characters(username).size() >= MAX_CHARACTERS:
 		return "You can have at most %d characters." % MAX_CHARACTERS
 	var ok: bool = _db.query_with_bindings(
-		"INSERT INTO characters (account_id, name, name_key, race, created) VALUES (?, ?, ?, ?, ?)",
-		[account["id"], character_name, character_name.to_lower(), race, _now()])
+		"INSERT INTO characters (account_id, name, name_key, race, sex, created) VALUES (?, ?, ?, ?, ?, ?)",
+		[account["id"], character_name, character_name.to_lower(), race, sex, _now()])
 	return "" if ok else _failed("create character %s" % character_name)
 
 
@@ -389,6 +394,18 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add character positions to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 6:
+		# Characters made before sexes could be picked are male.
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN sex TEXT NOT NULL DEFAULT '%s';
+			PRAGMA user_version = 6;
+			COMMIT;
+		""" % Races.DEFAULT_SEX)
+		if not ok:
+			push_error("Could not add character sexes to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

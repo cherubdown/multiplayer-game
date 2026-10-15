@@ -63,9 +63,11 @@ Both presets leave "Modify Resources" off so they export without rcedit. Turn it
 
 After you host or join, you log in to that server. The first time, type a username and password and press **Create account**; after that, **Log in**. Then the character select screen lets you create up to 5 characters, delete them, and pick one with **Play** (or double-click it) to enter the world.
 
-Every character is a **Human**, an **Elf** or a **Dwarf**. Pick the race with the buttons above the name box before pressing **Create**; the preview shows the race's model, and selecting a character in the list shows theirs. The race is saved with the character and can't be changed later. Characters made before races existed are humans.
+Every character is a **Human**, an **Elf**, a **Dwarf** or an **Ogre**, and **Male** or **Female**. Pick both with the buttons above the name box before pressing **Create**; the preview shows that model, and selecting a character in the list shows theirs. Race and sex are saved with the character and can't be changed later. Characters made before races existed are humans, and characters made before sexes could be picked are male.
 
-The character models are from Kay Lousberg's [KayKit Adventurers](https://kaylousberg.itch.io/kaykit-adventurers) pack (CC0, see `assets/characters/kaykit_adventurers/LICENSE.txt`): humans are the knight, elves the rogue (taller and slimmer, with pointed ears) and dwarves the barbarian (short and broad, with a long braided beard). `scripts/races.gd` lists which parts and weapons each race shows and how it is scaled.
+New characters start with nothing: an empty inventory, wearing only a plain t-shirt and trousers, barefoot.
+
+The character models are built in code (`scripts/character_model.gd`) from each race and sex's body measurements in `scripts/races.gd`, so there are no model files to import. Humans are average in every way; elves are tall and slender with long pointed ears; dwarves are short and broad, the men with a braided beard and the women with braids; ogres are huge, green-skinned and tusked. Tweak a number in `races.gd` to reshape a race. The idle, walk, run, jump and cheer animations are keyframed on the model's joints in the same script.
 
 Accounts belong to the server, not to your PC. The host (or dedicated server) keeps every account and its characters in a SQLite database, `accounts.db`, in its user data folder, which on Windows is `%APPDATA%\Godot\app_userdata\Multiplayer Survival Game\`. There is nothing to install or set up: the server creates the database the first time it starts and prints its full path. Pass `--accounts=<path>` to the host or server to keep it somewhere else. To back up a server's accounts, stop the server and copy `accounts.db`. If an older build left an `accounts.json` there, its accounts move into the new database on first start and the file is renamed `accounts.json.imported`.
 
@@ -89,7 +91,7 @@ The server owns every inventory and chest; clients only ask it to move things. I
 
 To try two players on one machine, start one copy with `--host` and another with `--join=127.0.0.1`.
 
-Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never load the models, so they still start from a checkout that was never opened in the editor, and the dedicated server export leaves them out.
+Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never build the models.
 
 ## Layout
 
@@ -100,7 +102,7 @@ Movement is server-authoritative: each client only sends its input (`PlayerInput
 - `addons/godot-sqlite/` is the vendored SQLite extension.
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the game world. It builds the terrain once the world seed is known, and on the server spawns a player per peer through a `MultiplayerSpawner`.
 - `scripts/world_gen.gd` turns a seed into the island's heights and biomes (deterministic noise, so every peer agrees). `scripts/terrain.gd` builds the ground collision from it, plus the biome-colored ground, sea, trees and rocks on peers that draw.
-- `scripts/races.gd` defines the races; `scripts/character_model.gd` builds and animates a race's model, for players and for the character select preview (`scripts/character_preview.gd`).
+- `scripts/races.gd` defines the races and their body measurements; `scripts/character_model.gd` builds and animates the model for a race and sex, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
 - `tests/` has headless tests for the account store, the world generator and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.

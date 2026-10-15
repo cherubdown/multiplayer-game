@@ -6,7 +6,7 @@ extends SceneTree
 ## or, to check the same flow as a listen-server host with no separate server:
 ##   godot --headless --path . -s tests/e2e_client.gd -- --host --port=7790
 ## Registers (or logs in), creates, deletes and picks a character, and checks
-## that the server spawns the player into the world with its race. Then walks
+## that the server spawns the player into the world with its race and sex. Then walks
 ## to an item, picks it up, moves it between slots, drops it on the ground and
 ## picks it up again, puts it in the test chest and takes it back, and checks
 ## the inventory is still there after re-entering the world, and that the
@@ -70,9 +70,10 @@ func _run() -> void:
 	result = await _call_and_wait(session.login_finished, session.register.bind(user, "password1"))
 	_check(result[0], "registers and logs in: %s" % result[1])
 
-	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Ragnar", "dwarf"))
+	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Ragnar", "dwarf", "female"))
 	_check(result[0].size() == 1 and result[1] == "", "creates a character")
 	_check(result[0].size() == 1 and result[0][0]["race"] == "dwarf", "character keeps its race")
+	_check(result[0].size() == 1 and result[0][0]["sex"] == "female", "character keeps its sex")
 	result = await _call_and_wait(session.characters_changed, session.create_character.bind("Grom", "orc"))
 	_check(result[0].size() == 1 and result[1] != "", "rejects an unknown race")
 	await _call_and_wait(session.characters_changed, session.create_character.bind("Astrid"))
@@ -86,6 +87,7 @@ func _run() -> void:
 	_check(player != null, "server spawned our player")
 	_check(player != null and player.character_name == "Ragnar", "player carries the character name")
 	_check(player != null and player.race == "dwarf", "player carries the character's race")
+	_check(player != null and player.sex == "female", "player carries the character's sex")
 	# Give the server time to drop the player onto the ground.
 	await create_timer(1.5).timeout
 	if player != null:

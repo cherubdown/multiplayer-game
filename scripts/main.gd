@@ -39,6 +39,7 @@ const Races := preload("res://scripts/races.gd")
 @onready var _password: LineEdit = %Password
 @onready var _character_list: ItemList = %CharacterList
 @onready var _race_picker: HBoxContainer = %RacePicker
+@onready var _sex_picker: HBoxContainer = %SexPicker
 @onready var _race_info: Label = %RaceInfo
 @onready var _preview: SubViewportContainer = %Preview
 @onready var _new_character_name: LineEdit = %NewCharacterName
@@ -50,8 +51,9 @@ const Races := preload("res://scripts/races.gd")
 var _world: Node
 ## True while a login or register request is waiting for the server.
 var _login_pending := false
-## Race for the next new character.
+## Race and sex for the next new character.
 var _new_race := Races.DEFAULT
+var _new_sex := Races.DEFAULT_SEX
 ## Name of the character just created, to select it once the list arrives.
 var _created_name := ""
 
@@ -75,6 +77,7 @@ func _ready() -> void:
 	_character_list.item_activated.connect(func(_index: int) -> void: _on_play_pressed())
 	_character_list.item_selected.connect(func(_index: int) -> void: _on_character_selected())
 	_build_race_picker()
+	_build_sex_picker()
 	%DeleteCharacterButton.pressed.connect(_on_delete_character_pressed)
 	_delete_confirm.confirmed.connect(_on_delete_confirmed)
 	%LogoutButton.pressed.connect(_on_logout_pressed)
@@ -203,8 +206,8 @@ func _on_characters_changed(characters: Array, message: String) -> void:
 	_created_name = ""
 	_character_list.clear()
 	for character in characters:
-		var race: String = character.get("race", Races.DEFAULT)
-		var index := _character_list.add_item("%s   %s" % [character["name"], Races.display_name(race)])
+		var description := Races.describe(character.get("race", Races.DEFAULT), character.get("sex", Races.DEFAULT_SEX))
+		var index := _character_list.add_item("%s   %s" % [character["name"], description])
 		_character_list.set_item_metadata(index, character)
 		if str(character["name"]).to_lower() == previous.to_lower():
 			_character_list.select(index)
@@ -213,19 +216,20 @@ func _on_characters_changed(characters: Array, message: String) -> void:
 	if message != "":
 		_status.text = message
 	elif characters.is_empty():
-		_status.text = "Pick a race and name to create a character."
+		_status.text = "Pick a race and sex, then name your character."
 	_on_character_selected()
 
 
 func _on_character_selected() -> void:
 	var selected := _character_list.get_selected_items()
 	if selected.is_empty():
-		_show_race(_new_race)
+		_show_new_character()
 	else:
 		var character: Dictionary = _character_list.get_item_metadata(selected[0])
 		var race: String = character.get("race", Races.DEFAULT)
-		_preview.show_race(race)
-		_race_info.text = "%s the %s" % [character["name"], Races.display_name(race)]
+		var sex: String = character.get("sex", Races.DEFAULT_SEX)
+		_preview.show_character(race, sex)
+		_race_info.text = "%s the %s" % [character["name"], Races.describe(race, sex)]
 	_update_character_buttons()
 
 
@@ -246,15 +250,40 @@ func _build_race_picker() -> void:
 
 func _on_race_picked(race: String) -> void:
 	_new_race = race
+	_on_new_character_changed()
+
+
+## Male and female toggle buttons for the next new character.
+func _build_sex_picker() -> void:
+	var group := ButtonGroup.new()
+	for sex in Races.SEXES:
+		var button := Button.new()
+		button.text = Races.SEX_NAMES[sex]
+		button.toggle_mode = true
+		button.button_group = group
+		button.button_pressed = sex == _new_sex
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_on_sex_picked.bind(sex))
+		_sex_picker.add_child(button)
+
+
+func _on_sex_picked(sex: String) -> void:
+	_new_sex = sex
+	_on_new_character_changed()
+
+
+func _on_new_character_changed() -> void:
 	_character_list.deselect_all()
-	_show_race(race)
+	_show_new_character()
 	_update_character_buttons()
 	_new_character_name.grab_focus()
 
 
-func _show_race(race: String) -> void:
-	_preview.show_race(race)
-	_race_info.text = "%s: %s" % [Races.display_name(race), Races.INFO[race]["description"]]
+## Previews the race and sex picked for the next new character. Everyone
+## starts out the same way, with nothing but a t-shirt and trousers.
+func _show_new_character() -> void:
+	_preview.show_character(_new_race, _new_sex)
+	_race_info.text = "%s: %s" % [Races.describe(_new_race, _new_sex), Races.INFO[_new_race]["description"]]
 
 
 func _on_create_character_pressed() -> void:
@@ -264,7 +293,7 @@ func _on_create_character_pressed() -> void:
 		return
 	_new_character_name.clear()
 	_created_name = character_name
-	Session.create_character(character_name, _new_race)
+	Session.create_character(character_name, _new_race, _new_sex)
 
 
 func _on_play_pressed() -> void:

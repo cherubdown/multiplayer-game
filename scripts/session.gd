@@ -62,6 +62,7 @@ var _store: AccountStore
 var _usernames := {}          # peer id -> logged in username (lowercase)
 var _in_world := {}           # peer id -> character name
 var _races := {}              # peer id -> race of the character in the world
+var _sexes := {}              # peer id -> sex of the character in the world
 var _inventories := {}        # peer id -> Inventory of the character in the world
 var _saved_spots := {}        # peer id -> where the character last left the world (see AccountStore.load_position())
 var _bodies := {}             # peer id -> the character's player node in the world
@@ -85,6 +86,11 @@ func players_in_world() -> Dictionary:
 ## Server side: the race of a peer's character in the world.
 func race_of(peer: int) -> String:
 	return _races.get(peer, Races.DEFAULT)
+
+
+## Server side: the sex of a peer's character in the world.
+func sex_of(peer: int) -> String:
+	return _sexes.get(peer, Races.DEFAULT_SEX)
 
 
 ## Server side: the inventory of a peer's character in the world, or null.
@@ -139,6 +145,7 @@ func reset() -> void:
 	_usernames.clear()
 	_in_world.clear()
 	_races.clear()
+	_sexes.clear()
 	_inventories.clear()
 	_saved_spots.clear()
 	_bodies.clear()
@@ -162,8 +169,8 @@ func logout() -> void:
 	character_name = ""
 
 
-func create_character(p_name: String, race: String = Races.DEFAULT) -> void:
-	_request_create_character.rpc_id(1, p_name, race)
+func create_character(p_name: String, race: String = Races.DEFAULT, sex: String = Races.DEFAULT_SEX) -> void:
+	_request_create_character.rpc_id(1, p_name, race, sex)
 
 
 func delete_character(p_name: String) -> void:
@@ -241,12 +248,12 @@ func _request_logout() -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _request_create_character(p_name, race) -> void:
+func _request_create_character(p_name, race, sex) -> void:
 	var peer := _logged_in_sender()
-	if peer == 0 or not p_name is String or not race is String:
+	if peer == 0 or not p_name is String or not race is String or not sex is String:
 		return
 	var account: String = _usernames[peer]
-	var err := _accounts().create_character(account, p_name, race)
+	var err := _accounts().create_character(account, p_name, race, sex)
 	_characters_result.rpc_id(peer, _accounts().list_characters(account), err)
 
 
@@ -274,17 +281,20 @@ func _request_enter_world(p_name) -> void:
 		_characters_result.rpc_id(peer, _accounts().list_characters(account), "No character called %s." % p_name)
 		return
 	var race := Races.DEFAULT
+	var sex := Races.DEFAULT_SEX
 	for character in _accounts().list_characters(account):
 		if str(character["name"]).to_lower() == p_name.to_lower():
 			p_name = character["name"]
 			race = character["race"]
+			sex = character["sex"]
 	_in_world[peer] = p_name
 	_races[peer] = race
+	_sexes[peer] = sex
 	var inv := Inventory.new(INVENTORY_SLOTS)
 	inv.load_array(_accounts().load_inventory(account, p_name))
 	_inventories[peer] = inv
 	_saved_spots[peer] = _accounts().load_position(account, p_name)
-	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.display_name(race)])
+	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.describe(race, sex)])
 	_entered_world.rpc_id(peer, p_name)
 	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
@@ -440,6 +450,7 @@ func _remove_from_world(peer: int) -> void:
 	_save_position(peer)
 	_in_world.erase(peer)
 	_races.erase(peer)
+	_sexes.erase(peer)
 	_inventories.erase(peer)
 	_saved_spots.erase(peer)
 	_bodies.erase(peer)

@@ -135,6 +135,7 @@ func _add_player(id: int, character_name: String, race: String) -> void:
 	player.name = str(id)
 	player.character_name = character_name
 	player.race = race
+	player.sex = Session.sex_of(id)
 	var saved := Session.saved_spot_of(id)
 	if not saved.is_empty():
 		# Back where they left off. Lift them a little so they never start
