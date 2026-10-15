@@ -52,6 +52,31 @@ func count_of(item: String) -> int:
 	return total
 
 
+## Takes up to `count` of `item` out, emptying the last stacks first. Returns
+## how many were taken.
+func remove(item: String, count: int) -> int:
+	var taken := 0
+	for i in range(slots.size() - 1, -1, -1):
+		if taken >= count:
+			break
+		var slot = slots[i]
+		if slot == null or slot["item"] != item:
+			continue
+		var moved := mini(count - taken, slot["count"])
+		slot["count"] -= moved
+		taken += moved
+		if slot["count"] == 0:
+			slots[i] = null
+	return taken
+
+
+## A separate copy with the same contents, to try a change on first.
+func copy():
+	var other = get_script().new(slots.size())
+	other.slots = to_array()
+	return other
+
+
 ## Moves as much of slot `index` as fits into `other`. Returns how many moved.
 func move_to(index: int, other) -> int:
 	if not has_slot(index) or slots[index] == null:

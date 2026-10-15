@@ -13,14 +13,18 @@ extends Node3D
 ## Items players drop lie where they fell until someone picks them up (until
 ## the server restarts).
 ##
-## Mushrooms, berry bushes and apple trees grow around the island from the
-## seed, for players to pick (see scripts/forage.gd).
+## Mushrooms, berry bushes, apple trees, fallen branches and loose stones are
+## scattered around the island from the seed, for players to pick (see
+## scripts/forage.gd). Trees and big rocks stand in the way and can be chopped
+## or broken with the right tool for wood and stone (see
+## scripts/harvestables.gd), which the server drops on the ground here.
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PICKUP_SCENE := preload("res://scenes/item_pickup.tscn")
 const CHEST_SCENE := preload("res://scenes/chest.tscn")
 const InventoryUI := preload("res://scripts/inventory_ui.gd")
 const Forage := preload("res://scripts/forage.gd")
+const Harvestables := preload("res://scripts/harvestables.gd")
 
 ## How close a player has to be to pick something up or open a chest. The
 ## server allows a bit more, since it sees players slightly later.
@@ -51,6 +55,8 @@ const TEST_ITEMS := [
 @onready var items: Node3D = $Items
 ## The plants to pick, rebuilt with the terrain.
 var forage: Forage
+## The trees and rocks, rebuilt with the terrain.
+var harvestables: Harvestables
 
 
 func _ready() -> void:
@@ -80,6 +86,7 @@ func _build_terrain(seed_text: String) -> void:
 	# A dedicated server draws nothing, so it only needs the ground's shape.
 	terrain.build(seed_text, not Network.is_dedicated_server())
 	_place_chest()
+	_grow_harvestables()
 	_grow_forage()
 	if multiplayer.is_server() and items.get_child_count() == 0:
 		for spot in TEST_ITEMS:
@@ -93,12 +100,26 @@ func is_near(peer: int, point: Vector3) -> bool:
 	return player != null and player.global_position.distance_to(point) <= SERVER_INTERACT_RANGE
 
 
+## Server side: whether any player stands within `distance` of `point`,
+## across the ground.
+func player_near(point: Vector3, distance: float) -> bool:
+	for player: Node3D in players.get_children():
+		if Vector2(player.global_position.x - point.x, player.global_position.z - point.z).length() < distance:
+			return true
+	return false
+
+
 ## Server side: puts a stack on the ground just in front of a player.
 func drop_item(peer: int, item: String, count: int) -> void:
 	var player := players.get_node_or_null(str(peer)) as Node3D
 	if player == null:
 		return
-	var spot := player.global_position + player.global_basis.z * -1.0
+	spawn_item(item, count, player.global_position + player.global_basis.z * -1.0)
+
+
+## Server side: puts a stack on the ground at (x, z) of `spot`, for anyone to
+## pick up.
+func spawn_item(item: String, count: int, spot: Vector3) -> void:
 	spot.y = terrain.ground_height(spot.x, spot.z)
 	var pickup := PICKUP_SCENE.instantiate()
 	pickup.item = item
@@ -106,6 +127,33 @@ func drop_item(peer: int, item: String, count: int) -> void:
 	pickup.world = self
 	pickup.position = spot
 	items.add_child(pickup, true)
+
+
+## Server side: a tree came down or a rock broke. Its wood or stone lands
+## just past its edge, on the side the player swung from.
+func _on_harvested(index: int, item: String, count: int, at: Vector3) -> void:
+	var away := Vector2.from_angle(randf() * TAU)
+	for player: Node3D in players.get_children():
+		var offset := Vector2(player.global_position.x - at.x, player.global_position.z - at.z)
+		if offset.length() < harvestables.radius_of(index) + Harvestables.SERVER_REACH + 1.0:
+			away = offset.normalized().rotated(randf_range(-0.6, 0.6))
+			break
+	var distance := harvestables.radius_of(index) + 0.6
+	spawn_item(item, count, at + Vector3(away.x, 0.0, away.y) * distance)
+
+
+func _grow_harvestables() -> void:
+	if harvestables != null:
+		# Out of the way first, so the new one gets the same name (and RPC path).
+		remove_child(harvestables)
+		harvestables.queue_free()
+	harvestables = Harvestables.new()
+	harvestables.name = "Harvestables"
+	harvestables.world = self
+	add_child(harvestables)
+	harvestables.setup(terrain.gen, not Network.is_dedicated_server())
+	if multiplayer.is_server():
+		harvestables.harvested.connect(_on_harvested)
 
 
 func _grow_forage() -> void:
@@ -117,7 +165,8 @@ func _grow_forage() -> void:
 	forage.name = "Forage"
 	forage.world = self
 	add_child(forage)
-	forage.setup(terrain.gen, Callable() if Network.is_dedicated_server() else terrain.surface_height)
+	forage.setup(terrain.gen, Callable() if Network.is_dedicated_server() else terrain.surface_height,
+		harvestables.occupied)
 
 
 func _place_chest() -> void:

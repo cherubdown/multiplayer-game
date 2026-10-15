@@ -1,6 +1,7 @@
 extends Node3D
-## Food growing wild around the island: mushrooms, raspberry and blueberry
-## bushes, and the odd apple tree. Where they grow comes from the world seed,
+## Things to pick up around the island: food growing wild (mushrooms,
+## raspberry and blueberry bushes, and the odd apple tree), plus fallen
+## branches and loose stones lying about for wood and stone. Where they grow comes from the world seed,
 ## so every peer places them in the same spots without sending them over the
 ## network, and each kind only grows in the biomes that suit it.
 ##
@@ -13,7 +14,8 @@ extends Node3D
 ## forgotten when the server restarts.
 ##
 ## The plants are drawn on every peer that draws anything. A dedicated server
-## only keeps where they are and what's left on them.
+## only keeps where they are and what's left on them. Apple trees have solid
+## trunks on every peer, like the other trees (see harvestables.gd).
 
 const WorldGen := preload("res://scripts/world_gen.gd")
 const Items := preload("res://scripts/items.gd")
@@ -39,19 +41,32 @@ const KINDS := {
 		"prompt": "Pick blueberries" },
 	"apple_tree": { "item": "apple", "picks": Vector2i(3, 6), "yield": 1, "regrow": 120.0,
 		"prompt": "Pick an apple" },
+	"branches": { "item": "wood", "picks": Vector2i(1, 1), "yield": 2, "regrow": 300.0,
+		"prompt": "Pick up branches" },
+	"loose_stones": { "item": "stone", "picks": Vector2i(1, 1), "yield": 2, "regrow": 360.0,
+		"prompt": "Pick up stones" },
 }
 ## Chance per cell of each kind, by biome. Mushrooms and raspberries are
-## common, blueberries less so, apple trees rare.
+## common, blueberries less so, apple trees rare. Branches lie where trees
+## grow, loose stones where the ground is rocky. New kinds go at the end of a
+## biome's list, so the plants already there stay where they are.
 const DENSITY := {
-	Biome.MEADOWS: { "raspberry_bush": 0.1, "mushroom": 0.04, "blueberry_bush": 0.03, "apple_tree": 0.02 },
-	Biome.BLACK_FOREST: { "mushroom": 0.14, "blueberry_bush": 0.05, "raspberry_bush": 0.03 },
-	Biome.SWAMP: { "mushroom": 0.06 },
-	Biome.PLAINS: { "raspberry_bush": 0.04, "apple_tree": 0.006 },
-	Biome.MOUNTAINS: { "blueberry_bush": 0.02 },
+	Biome.MEADOWS: { "raspberry_bush": 0.1, "mushroom": 0.04, "blueberry_bush": 0.03, "apple_tree": 0.02,
+		"branches": 0.05, "loose_stones": 0.04 },
+	Biome.BLACK_FOREST: { "mushroom": 0.14, "blueberry_bush": 0.05, "raspberry_bush": 0.03,
+		"branches": 0.07, "loose_stones": 0.03 },
+	Biome.SWAMP: { "mushroom": 0.06, "branches": 0.05 },
+	Biome.PLAINS: { "raspberry_bush": 0.04, "apple_tree": 0.006, "branches": 0.02, "loose_stones": 0.06 },
+	Biome.MOUNTAINS: { "blueberry_bush": 0.02, "loose_stones": 0.08 },
 }
 ## The highest total chance in DENSITY. Cells that roll above it can't grow
 ## anything, so they're skipped without looking up their biome.
-const MAX_ODDS := 0.23
+const MAX_ODDS := 0.32
+## Apple trees' solid trunks: radius, height, and physics layer (the same as
+## the other trees in harvestables.gd).
+const TRUNK_RADIUS := 0.28
+const TRUNK_HEIGHT := 2.6
+const TRUNK_LAYER := 2
 ## Plants stop drawing this far from the camera.
 const SMALL_VISIBLE := 90.0
 const TREE_VISIBLE := 220.0
@@ -92,12 +107,14 @@ class Plant extends Node3D:
 
 ## Places the plants from `gen`'s seed. `surface_height` is where drawn plants
 ## stand (the drawn ground); pass an empty Callable on a peer that draws
-## nothing.
-func setup(gen: WorldGen, surface_height: Callable = Callable()) -> void:
-	spots = scatter(gen)
+## nothing. `blocked`(x, z, margin) says where something solid already stands
+## (see harvestables.gd), so nothing grows inside it.
+func setup(gen: WorldGen, surface_height: Callable = Callable(), blocked: Callable = Callable()) -> void:
+	spots = scatter(gen, blocked)
 	_cells.clear()
 	for i in spots.size():
 		_cells[_cell_of(spots[i]["position"])] = i
+	_build_trunks()
 	if surface_height.is_valid():
 		_build_plants(surface_height)
 	if multiplayer.is_server():
@@ -115,8 +132,9 @@ func _process(delta: float) -> void:
 		regrow(Time.get_ticks_msec())
 
 
-## Every plant the seed grows, in a fixed order. Same answer for the same seed.
-static func scatter(gen: WorldGen) -> Array:
+## Every plant the seed grows, in a fixed order. Same answer for the same seed
+## (and `blocked`).
+static func scatter(gen: WorldGen, blocked: Callable = Callable()) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = gen.seed_number ^ 0xF0A6E
 	var result := []
@@ -142,7 +160,8 @@ static func scatter(gen: WorldGen) -> Array:
 				if roll >= odds[kind]:
 					roll -= odds[kind]
 					continue
-				if h < WorldGen.SEA_LEVEL + 0.3 or _steep(gen, x, z, h):
+				if h < WorldGen.SEA_LEVEL + 0.3 or _steep(gen, x, z, h) \
+						or (blocked.is_valid() and blocked.call(x, z, 0.8)):
 					break
 				var picks: Vector2i = KINDS[kind]["picks"]
 				result.append({ "kind": kind, "position": Vector3(x, h, z), "turn": turn,
@@ -302,6 +321,26 @@ func _set_left(index: int, count: int) -> void:
 	picks_changed.emit(index, count)
 
 
+# --- Solid trunks -----------------------------------------------------------
+
+func _build_trunks() -> void:
+	var shape := CylinderShape3D.new()
+	shape.radius = TRUNK_RADIUS
+	shape.height = TRUNK_HEIGHT
+	for i in spots.size():
+		if spots[i]["kind"] != "apple_tree":
+			continue
+		var body := StaticBody3D.new()
+		body.name = "Trunk_%d" % i
+		body.collision_layer = TRUNK_LAYER
+		body.collision_mask = 0
+		body.position = spots[i]["position"] + Vector3.UP * TRUNK_HEIGHT * 0.5
+		var collision := CollisionShape3D.new()
+		collision.shape = shape
+		body.add_child(collision)
+		add_child(body)
+
+
 # --- Drawing ----------------------------------------------------------------
 
 func _build_plants(surface_height: Callable) -> void:
@@ -319,6 +358,10 @@ func _build_plants(surface_height: Callable) -> void:
 		match spot["kind"]:
 			"mushroom":
 				_add_mesh(plant, "mushrooms", SMALL_VISIBLE)
+			"branches":
+				_add_mesh(plant, "branches", SMALL_VISIBLE)
+			"loose_stones":
+				_add_mesh(plant, "loose_stones", SMALL_VISIBLE)
 			"raspberry_bush":
 				_add_mesh(plant, "raspberry_bush", SMALL_VISIBLE)
 				_add_mesh(plant, "raspberries", SMALL_VISIBLE, "Fruit")
@@ -359,7 +402,7 @@ func _show(index: int) -> void:
 		return
 	var have := picks_left(index)
 	match spots[index]["kind"]:
-		"mushroom":
+		"mushroom", "branches", "loose_stones":
 			plant.visible = have > 0
 		"apple_tree":
 			for n in spots[index]["picks"]:
@@ -414,6 +457,20 @@ static func _mesh(mesh_name: String) -> Mesh:
 			_add_surface(mesh, crown, Color(0.28, 0.52, 0.2))
 		"apple":
 			_add_surface(mesh, [[_ball(0.11), Transform3D()]], Color(0.82, 0.12, 0.1))
+		"branches":
+			# A few sticks lying crossed on the ground.
+			var sticks := []
+			for b in [[0.0, 0.9, 0.035], [1.1, 0.75, 0.03], [2.3, 0.6, 0.025]]:
+				var lie := Basis(Vector3.UP, b[0]) * Basis(Vector3.FORWARD, PI * 0.5)
+				sticks.append([_cylinder(b[2], b[2] * 1.3, b[1]), Transform3D(lie, Vector3.UP * b[2])])
+			_add_surface(mesh, sticks, Color(0.45, 0.3, 0.17))
+		"loose_stones":
+			# A small pile of flattened grey stones.
+			var stones := []
+			for p in [[Vector3.ZERO, 0.16], [Vector3(0.22, 0.0, 0.08), 0.11], [Vector3(-0.12, 0.0, 0.18), 0.09]]:
+				var r: float = p[1]
+				stones.append([_ball(r), Transform3D(Basis().scaled(Vector3(1.0, 0.6, 0.9)), p[0] + Vector3.UP * r * 0.4)])
+			_add_surface(mesh, stones, Color(0.56, 0.56, 0.58))
 	_meshes[mesh_name] = mesh
 	return mesh
 
