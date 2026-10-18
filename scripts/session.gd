@@ -25,6 +25,11 @@ signal leaving_world
 
 ## Client side: the server sent this client's inventory (Inventory slots).
 signal inventory_changed(slots: Array)
+## Client side: the server answered a craft request; message is "" if it
+## worked, else why not.
+signal craft_finished(recipe_id: String, message: String)
+## Client side: the item this client's character holds changed ("" for none).
+signal held_changed(item: String)
 
 ## Every peer: the world seed is known (or changed). The world is generated
 ## from it; see scripts/world_gen.gd.
@@ -43,6 +48,8 @@ const AccountStore := preload("res://scripts/account_store.gd")
 const Races := preload("res://scripts/races.gd")
 const WorldGen := preload("res://scripts/world_gen.gd")
 const Inventory := preload("res://scripts/inventory.gd")
+const Items := preload("res://scripts/items.gd")
+const Recipes := preload("res://scripts/recipes.gd")
 const MAX_FAILED_LOGINS := 5
 ## Slots in every character's inventory.
 const INVENTORY_SLOTS := 20
@@ -54,6 +61,8 @@ var character_name := ""
 var roster := {}
 ## The slots of this client's inventory, [] when not in the world.
 var inventory: Array = []
+## The item this client's character holds in its hand, "" for none.
+var held_item := ""
 ## Every peer: the seed of the world being played, "" until the server says.
 var world_seed := ""
 
@@ -66,6 +75,7 @@ var _sexes := {}              # peer id -> sex of the character in the world
 var _inventories := {}        # peer id -> Inventory of the character in the world
 var _saved_spots := {}        # peer id -> where the character last left the world (see AccountStore.load_position())
 var _bodies := {}             # peer id -> the character's player node in the world
+var _held := {}               # peer id -> the tool the character holds, if any
 var _failed_logins := {}      # peer id -> count
 
 
@@ -106,6 +116,20 @@ func inventory_updated(peer: int) -> void:
 		return
 	_accounts().save_inventory(_usernames[peer], _in_world[peer], inv.to_array())
 	_set_inventory.rpc_id(peer, inv.to_array())
+	# A tool that's been dropped or put away can't stay in the hand.
+	if held_of(peer) != "" and inv.count_of(held_of(peer)) == 0:
+		_set_held_of(peer, "")
+
+
+## Server side: the tool a peer's character holds, or "".
+func held_of(peer: int) -> String:
+	return _held.get(peer, "")
+
+
+## Server side: the player node of a peer's character in the world, or null.
+func body_of(peer: int) -> Node3D:
+	var body = _bodies.get(peer)
+	return body if is_instance_valid(body) else null
 
 
 ## Server side: where a peer's character stood and faced when it last left the
@@ -150,6 +174,8 @@ func reset() -> void:
 	_saved_spots.clear()
 	_bodies.clear()
 	_failed_logins.clear()
+	_held.clear()
+	held_item = ""
 
 
 # --- Client API -------------------------------------------------------------
@@ -189,6 +215,18 @@ func move_item(from: int, to: int) -> void:
 ## Drops the stack in inventory slot `slot` on the ground.
 func drop_item(slot: int) -> void:
 	_request_drop_item.rpc_id(1, slot)
+
+
+## Crafts one of a recipe (see scripts/recipes.gd) from what's in the
+## inventory. The answer comes back as craft_finished.
+func craft(recipe_id: String) -> void:
+	_request_craft.rpc_id(1, recipe_id)
+
+
+## Holds a tool from the inventory in the character's hand, or puts it away
+## with "".
+func hold(item: String) -> void:
+	_request_hold.rpc_id(1, item)
 
 
 ## Back to character select without disconnecting.
@@ -323,6 +361,33 @@ func _request_drop_item(slot) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
+func _request_craft(recipe_id) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	if inv == null or not recipe_id is String:
+		return
+	var err := Recipes.craft(recipe_id, inv)
+	if err == "":
+		var made: String = Recipes.find(recipe_id)["result"]
+		print("Peer %d (%s) crafted a %s" % [peer, _in_world[peer], Items.display_name(made)])
+		inventory_updated(peer)
+		# Empty handed: take the new tool straight into the hand.
+		if held_of(peer) == "" and Items.is_tool_item(made):
+			_set_held_of(peer, made)
+	_craft_result.rpc_id(peer, recipe_id, err)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_hold(item) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	if inv == null or not item is String:
+		return
+	if item == "" or (Items.is_tool_item(item) and inv.count_of(item) > 0):
+		_set_held_of(peer, item)
+
+
+@rpc("any_peer", "call_local", "reliable")
 func _request_leave_world() -> void:
 	var peer := _logged_in_sender()
 	if peer == 0 or not _in_world.has(peer):
@@ -368,9 +433,21 @@ func _set_inventory(slots: Array) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _craft_result(recipe_id: String, message: String) -> void:
+	craft_finished.emit(recipe_id, message)
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_held(item: String) -> void:
+	held_item = item
+	held_changed.emit(item)
+
+
+@rpc("authority", "call_local", "reliable")
 func _left_world() -> void:
 	character_name = ""
 	inventory = []
+	held_item = ""
 	left_world.emit()
 
 
@@ -454,8 +531,22 @@ func _remove_from_world(peer: int) -> void:
 	_inventories.erase(peer)
 	_saved_spots.erase(peer)
 	_bodies.erase(peer)
+	_held.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
+
+
+## Server side: puts `item` in a peer's hand ("" for nothing), on their
+## player for everyone to see, and tells them.
+func _set_held_of(peer: int, item: String) -> void:
+	if item == "":
+		_held.erase(peer)
+	else:
+		_held[peer] = item
+	var body := body_of(peer)
+	if body != null:
+		body.held_item = item
+	_set_held.rpc_id(peer, item)
 
 
 func _save_position(peer: int) -> void:

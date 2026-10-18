@@ -9,7 +9,8 @@ extends SceneTree
 ## that the server spawns the player into the world with its race and sex. Then walks
 ## to an item, picks it up, moves it between slots, drops it on the ground and
 ## picks it up again, puts it in the test chest and takes it back, picks food
-## off the nearest plant, and checks
+## off the nearest plant, gathers wood and stone to craft a stone axe, chops
+## down the nearest tree with it and picks up its wood, and checks
 ## the inventory is still there after re-entering the world, and that the
 ## player comes back where they stood, facing the same way. Exits non-zero on
 ## failure.
@@ -98,6 +99,10 @@ func _run() -> void:
 
 	if player != null:
 		await _check_inventory(world, player)
+		await _check_crafting(world, player)
+		# What re-entering the world should bring back.
+		_picked_item = "stone_axe"
+		_picked_count = _count(session.inventory, "stone_axe")
 
 	# Turn somewhere the spawn would never face, and remember where we stand.
 	var left_at := Vector3.ZERO
@@ -217,11 +222,18 @@ func _check_foraging(world: Node, player: Node3D) -> void:
 	_check(forage != null and forage.spots.size() > 100, "food grows around the island")
 	if forage == null:
 		return
+	# Step away from the chest first, then go for the nearest one that walking
+	# straight at won't run into anything.
+	await _walk_to(player, world.terrain.gen.spawn_point(PI, 3.0))
 	var index := -1
 	for i in forage.spots.size():
 		if forage.picks_left(i) > 0 and (index < 0 or forage.spots[i]["position"].distance_to(player.global_position)
-				< forage.spots[index]["position"].distance_to(player.global_position)):
+				< forage.spots[index]["position"].distance_to(player.global_position)) \
+				and _path_clear(world, player.global_position, forage.spots[i]["position"], -1):
 			index = i
+	_check(index >= 0, "there's something to pick within walking distance")
+	if index < 0:
+		return
 	var spot: Dictionary = forage.spots[index]
 	var kind: Dictionary = forage.KINDS[spot["kind"]]
 	var before := _count(session.inventory, kind["item"])
@@ -236,6 +248,112 @@ func _check_foraging(world: Node, player: Node3D) -> void:
 		"picks %d %s from a %s" % [kind["yield"], kind["item"], spot["kind"]])
 	await create_timer(0.3).timeout
 	_check(forage.picks_left(index) == had - 1, "the server says the %s has been picked" % spot["kind"])
+
+
+## Gathers wood and stone from the test items, crafts a stone axe (which goes
+## straight into the empty hand), then chops down the nearest tree and picks up
+## the wood it drops.
+func _check_crafting(world: Node, player: Node3D) -> void:
+	var session: Node = root.get_node("Session")
+	var axe := { "wood": 5, "stone": 3 }
+	var result: Array
+	if _count(session.inventory, "wood") < 5:
+		var before: Array = session.inventory
+		result = await _call_and_wait(session.craft_finished, session.craft.bind("stone_axe"))
+		_check(result[1] != "" and session.inventory == before, "can't craft an axe without the wood and stone: %s" % result[1])
+	for item in axe:
+		while _count(session.inventory, item) < axe[item]:
+			var pickup := _nearest_pickup(world, player, item)
+			if pickup == null:
+				break
+			await _walk_to(player, pickup.global_position)
+			await _call_and_wait(session.inventory_changed, pickup.interact)
+		_check(_count(session.inventory, item) >= axe[item], "gathers %d %s (has %d)" % [axe[item], item, _count(session.inventory, item)])
+	var wood := _count(session.inventory, "wood")
+	var stone := _count(session.inventory, "stone")
+	result = await _call_and_wait(session.craft_finished, session.craft.bind("stone_axe"))
+	_check(result[1] == "", "crafts a stone axe: %s" % result[1])
+	await create_timer(0.3).timeout
+	_check(_count(session.inventory, "stone_axe") == 1 and _count(session.inventory, "wood") == wood - 5 \
+		and _count(session.inventory, "stone") == stone - 3, "crafting uses 5 wood and 3 stone for the axe")
+	_check(session.held_item == "stone_axe" and player.held_item == "stone_axe", "the new axe goes into the empty hand")
+
+	var harvest: Node = world.harvestables
+	var tree := _clear_tree(world, player.global_position)
+	_check(tree >= 0, "there's a tree to chop")
+	if tree < 0:
+		return
+	var at: Vector3 = harvest.spots[tree]["position"]
+	# Walking at the trunk stops against it.
+	await _walk_to(player, at)
+	_check(harvest.nearest(player.global_position, harvest.REACH) == tree, "stands within reach of the tree")
+	var hits: int = harvest.hits_left(tree)
+	var input: Node = player.get_node("PlayerInput")
+	for n in hits:
+		await _call_and_wait(harvest.changed, harvest.swing.bind(tree, input.yaw))
+		await create_timer(harvest.SWING_SECONDS).timeout
+	_check(harvest.felled.has(tree), "chops the tree down in %d hits" % hits)
+	_check(not harvest.is_solid(tree), "the felled tree can be walked through")
+	await create_timer(0.5).timeout
+	var logs := _nearest_pickup(world, player, "wood")
+	_check(logs != null and logs.global_position.distance_to(at) < harvest.radius_of(tree) + 2.0,
+		"the tree drops wood on the ground")
+	if logs != null:
+		wood = _count(session.inventory, "wood")
+		var amount: int = logs.count
+		await _walk_to(player, logs.global_position)
+		await _call_and_wait(session.inventory_changed, logs.interact)
+		_check(_count(session.inventory, "wood") == wood + amount, "picks up the tree's %d wood" % amount)
+
+
+## The nearest test item or dropped stack of `item`, or null.
+func _nearest_pickup(world: Node, player: Node3D, item: String) -> Node3D:
+	var best: Node3D = null
+	for node: Node3D in world.get_node("Items").get_children():
+		if node.item == item and not node.is_queued_for_deletion() and (best == null \
+				or node.global_position.distance_to(player.global_position) < best.global_position.distance_to(player.global_position)):
+			best = node
+	return best
+
+
+## The nearest standing tree with nothing else solid between it and `from`,
+## so walking straight at it gets there.
+func _clear_tree(world: Node, from: Vector3) -> int:
+	var harvest: Node = world.harvestables
+	var best := -1
+	var best_distance := INF
+	var start := Vector2(from.x, from.z)
+	for i in harvest.spots.size():
+		var at: Vector3 = harvest.spots[i]["position"]
+		var distance := start.distance_to(Vector2(at.x, at.z))
+		if harvest.tool_for(i) != "axe" or harvest.felled.has(i) or distance >= best_distance or distance > 80.0:
+			continue
+		if _path_clear(world, from, at, i):
+			best = i
+			best_distance = distance
+	return best
+
+
+## Whether walking straight from `from` to `to` misses every tree and rock
+## (but tree or rock `skip`), apple tree and the test chest.
+func _path_clear(world: Node, from: Vector3, to: Vector3, skip: int) -> bool:
+	var harvest: Node = world.harvestables
+	var obstacles := []  # [Vector3, radius]
+	for j in harvest.spots.size():
+		if j != skip:
+			obstacles.append([harvest.spots[j]["position"], harvest.radius_of(j)])
+	for spot in world.forage.spots:
+		if spot["kind"] == "apple_tree" and spot["position"].distance_to(to) > 0.1:
+			obstacles.append([spot["position"], world.forage.TRUNK_RADIUS])
+	obstacles.append([world.get_node("TestChest").global_position, 0.8])
+	var start := Vector2(from.x, from.z)
+	var end := Vector2(to.x, to.z)
+	for obstacle in obstacles:
+		var point := Vector2(obstacle[0].x, obstacle[0].z)
+		if point.distance_to(start) < start.distance_to(end) + 3.0 \
+				and Geometry2D.get_closest_point_to_segment(point, start, end).distance_to(point) < obstacle[1] + 1.2:
+			return false
+	return true
 
 
 ## Walks the local player to within a step of `target`, as if holding W

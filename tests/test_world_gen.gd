@@ -45,7 +45,6 @@ func _run() -> void:
 	terrain.build("hello world")
 	var names: Array = terrain.get_children().map(func(n: Node) -> String: return n.name)
 	_check("Ground" in names and "GroundMesh" in names and "Sea" in names, "terrain builds collision, mesh and sea")
-	_check(names.any(func(n: String) -> bool: return n.ends_with("s") and n != "Ground"), "terrain scatters decorations")
 	_check_foliage(terrain)
 	terrain.build("hello world", false)
 	await process_frame

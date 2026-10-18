@@ -29,6 +29,13 @@ const TURN_SPEED := 10.0
 @export var sex := Races.DEFAULT_SEX
 ## Set by the server every physics step, for animations.
 @export var airborne := false
+## The tool in the character's right hand, "" for none. Set by the server
+## (see Session.hold()) and replicated so everyone sees it.
+@export var held_item := "":
+	set(value):
+		held_item = value
+		if is_node_ready():
+			model.set_held(value)
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
@@ -52,12 +59,25 @@ func _ready() -> void:
 	if model.setup(race, sex):
 		$Body.visible = false
 		$Nameplate.position.y = model.height + 0.3
+		model.set_held(held_item)
 	elif is_local:
 		# Without a model (e.g. a headless peer), the local player's capsule
 		# gets a different color so you can tell yourself apart.
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.2, 0.6, 1.0)
 		$Body.material_override = mat
+
+
+## Server side: turns the character to face `yaw` and plays a swing of the
+## held tool on every peer.
+func swing(yaw: float) -> void:
+	rotation.y = yaw
+	_play_swing.rpc()
+
+
+@rpc("authority", "call_local", "unreliable")
+func _play_swing() -> void:
+	model.play_once("Swing")
 
 
 func _on_leaving_world() -> void:

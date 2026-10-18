@@ -33,6 +33,9 @@ properties/5/replication_mode = 2
 properties/6/path = NodePath(".:sex")
 properties/6/spawn = true
 properties/6/replication_mode = 0
+properties/7/path = NodePath(".:held_item")
+properties/7/spawn = true
+properties/7/replication_mode = 2
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_input"]
 properties/0/path = NodePath(".:direction")
@@ -46,6 +49,7 @@ properties/2/spawn = false
 properties/2/replication_mode = 2
 
 [node name="Player" type="CharacterBody3D"]
+collision_mask = 3
 script = ExtResource("1_player")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

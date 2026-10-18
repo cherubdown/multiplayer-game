@@ -1,7 +1,7 @@
 extends Node3D
 ## The generated island: ground collision on every peer, plus the ground mesh
-## colored by biome, the sea, trees and rocks, and plants (see foliage.gd) on
-## peers that draw anything.
+## colored by biome, the sea and plants (see foliage.gd) on peers that draw
+## anything. Trees and rocks are in harvestables.gd.
 ## build() makes it from a seed string; the same seed gives the same world.
 
 const WorldGen := preload("res://scripts/world_gen.gd")
@@ -33,7 +33,6 @@ func build(seed_text: String, visuals: bool = true) -> void:
 	if visuals:
 		_build_ground_mesh()
 		_build_sea()
-		_build_decorations()
 		var foliage := Foliage.new()
 		foliage.name = "Foliage"
 		add_child(foliage)
@@ -184,116 +183,3 @@ func _build_sea() -> void:
 	sea.mesh = plane
 	sea.position.y = WorldGen.SEA_LEVEL
 	add_child(sea)
-
-
-# --- Trees and rocks --------------------------------------------------------
-# Scattered from the seed so every player sees them in the same places. They
-# are only scenery for now: nothing collides with them.
-
-## Chance per 8 m cell of each kind of decoration, by biome.
-const DECOR_DENSITY := {
-	WorldGen.Biome.MEADOWS: { "leafy": 0.12, "pine": 0.03, "rock": 0.02 },
-	WorldGen.Biome.BLACK_FOREST: { "pine": 0.6, "rock": 0.05 },
-	WorldGen.Biome.SWAMP: { "dead": 0.25 },
-	WorldGen.Biome.PLAINS: { "leafy": 0.02, "rock": 0.04 },
-	WorldGen.Biome.MOUNTAINS: { "pine": 0.05, "rock": 0.15 },
-}
-const DECOR_CELL := 8.0
-
-
-func _build_decorations() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = gen.seed_number
-	var placed := {}  # kind -> Array[Transform3D]
-	var cells := int(WorldGen.SIZE / DECOR_CELL)
-	for j in cells:
-		for i in cells:
-			# Draw the same random numbers for every cell so one cell's
-			# biome doesn't shift what every later cell gets.
-			var jitter := Vector2(rng.randf(), rng.randf())
-			var roll := rng.randf()
-			var size := rng.randf_range(0.7, 1.4)
-			var turn := rng.randf() * TAU
-			var x := (i + jitter.x) * DECOR_CELL - WorldGen.SIZE * 0.5
-			var z := (j + jitter.y) * DECOR_CELL - WorldGen.SIZE * 0.5
-			var h := gen.height_at(x, z)
-			var odds: Dictionary = DECOR_DENSITY.get(gen.biome_for(x, z, h), {})
-			for kind in odds:
-				if roll < odds[kind]:
-					var basis := Basis(Vector3.UP, turn).scaled(Vector3.ONE * size)
-					if not placed.has(kind):
-						placed[kind] = []
-					placed[kind].append(Transform3D(basis, Vector3(x, h, z)))
-					break
-				roll -= odds[kind]
-	for kind in placed:
-		var multimesh := MultiMesh.new()
-		multimesh.transform_format = MultiMesh.TRANSFORM_3D
-		multimesh.mesh = _decor_mesh(kind)
-		multimesh.instance_count = placed[kind].size()
-		for n in placed[kind].size():
-			multimesh.set_instance_transform(n, placed[kind][n])
-		var instance := MultiMeshInstance3D.new()
-		instance.name = kind.capitalize() + "s"
-		instance.multimesh = multimesh
-		add_child(instance)
-
-
-## A simple low-poly stand-in for each kind of decoration, standing on y = 0.
-func _decor_mesh(kind: String) -> Mesh:
-	match kind:
-		"pine":
-			return _tree_mesh(_cone(2.2, 7.0), Color(0.12, 0.28, 0.14), 4.5)
-		"leafy":
-			var crown := SphereMesh.new()
-			crown.radius = 2.4
-			crown.height = 4.0
-			crown.radial_segments = 8
-			crown.rings = 4
-			return _tree_mesh(crown, Color(0.3, 0.5, 0.18), 4.5)
-		"dead":
-			return _tree_mesh(null, Color.BLACK, 5.0)
-		_:
-			var rock := SphereMesh.new()
-			rock.radius = 1.3
-			rock.height = 1.6
-			rock.radial_segments = 6
-			rock.rings = 3
-			rock.material = _material(Color(0.5, 0.5, 0.52))
-			return rock
-
-
-## Joins a trunk with an optional crown centered crown_y above the ground.
-func _tree_mesh(crown: PrimitiveMesh, crown_color: Color, crown_y: float) -> Mesh:
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.2
-	trunk.bottom_radius = 0.35
-	trunk.height = crown_y if crown else 5.0
-	trunk.radial_segments = 6
-	var tool := SurfaceTool.new()
-	var mesh := ArrayMesh.new()
-	tool.append_from(trunk, 0, Transform3D(Basis(), Vector3.UP * trunk.height * 0.5))
-	tool.commit(mesh)
-	mesh.surface_set_material(0, _material(Color(0.3, 0.2, 0.12) if crown else Color(0.25, 0.22, 0.18)))
-	if crown:
-		tool = SurfaceTool.new()
-		tool.append_from(crown, 0, Transform3D(Basis(), Vector3.UP * crown_y))
-		tool.commit(mesh)
-		mesh.surface_set_material(1, _material(crown_color))
-	return mesh
-
-
-func _cone(radius: float, height: float) -> CylinderMesh:
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = radius
-	cone.height = height
-	cone.radial_segments = 7
-	return cone
-
-
-func _material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.9
-	return material

@@ -1,16 +1,23 @@
 extends CanvasLayer
-## The local player's inventory screen, the chest screen and the "E" prompt.
-## Added to the world on every peer that has a player (not a dedicated server).
+## The local player's inventory screen with the crafting window beside it, the
+## chest screen, and the on-screen prompt. Added to the world on every peer
+## that has a player (not a dedicated server).
 ##
-## Tab (or I) shows the inventory. E picks up the nearest item, picks the
-## nearest plant (see scripts/forage.gd) or opens the nearest chest. Drag a stack onto another slot to move it (in the inventory,
-## in the chest or between the two), or off the panels to drop it on the
-## ground; with a chest open, clicking a stack also sends it across. Hovering a
-## stack says what it is. Esc, Tab or E closes the screen again. All of it only
-## sends requests: the server owns every inventory (see Session and
-## scripts/chest.gd).
+## Tab (or I) shows the inventory, with what can be crafted on the right (see
+## scripts/recipes.gd). E picks up the nearest item, picks the nearest plant
+## (see scripts/forage.gd) or opens the nearest chest. Drag a stack onto
+## another slot to move it (in the inventory, in the chest or between the two),
+## or off the panels to drop it on the ground; with a chest open, the chest
+## takes the crafting window's place and clicking a stack sends it across.
+## Right-click a tool to hold it (or put it away), then left-click in the world
+## to swing it at the tree or rock in reach (see scripts/harvestables.gd).
+## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
+## All of it only sends requests: the server owns every inventory (see Session
+## and scripts/chest.gd).
 
 const Items := preload("res://scripts/items.gd")
+const Recipes := preload("res://scripts/recipes.gd")
+const Harvestables := preload("res://scripts/harvestables.gd")
 
 const COLUMNS := 5
 
@@ -22,13 +29,21 @@ var _inventory_grid: GridContainer
 var _chest_panel: Control
 var _chest_grid: GridContainer
 var _hint: Label
+var _crafting_panel: Control
+var _recipe_list: VBoxContainer
+## The last thing the server said about crafting, shown under the recipes.
+var _craft_message: Label
 ## The chest whose screen is showing, or null.
 var _chest: Node
+## Time.get_ticks_msec() of the last swing, so holding the button doesn't spam.
+var _last_swing := -100000
 
 
 func _ready() -> void:
 	_build()
 	Session.inventory_changed.connect(func(_slots: Array) -> void: _refresh())
+	Session.held_changed.connect(func(_item: String) -> void: _refresh())
+	Session.craft_finished.connect(_on_craft_finished)
 	Session.left_world.connect(_close)
 	Session.leaving_world.connect(_close)
 	for chest in get_tree().get_nodes_in_group("interactable"):
@@ -48,9 +63,16 @@ func _process(_delta: float) -> void:
 	if _chest != null and (player == null or _distance(player, _chest) > get_parent().INTERACT_RANGE + 1.0):
 		_chest.close()
 	var target := _target() if not _screen.visible else null
-	_prompt.visible = target != null
+	var text := ""
 	if target != null:
-		_prompt.text = "[E] %s" % target.prompt()
+		text = "[E] %s" % target.prompt()
+	elif not _screen.visible:
+		var harvestables: Node = get_parent().get("harvestables")
+		var index := _harvest_target()
+		if index >= 0:
+			text = harvestables.prompt_for(index, Session.held_item)
+	_prompt.visible = text != ""
+	_prompt.text = text
 
 
 func _input(event: InputEvent) -> void:
@@ -73,6 +95,30 @@ func _input(event: InputEvent) -> void:
 		if target != null:
 			target.interact()
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("attack"):
+		_swing()
+
+
+## Swings the held tool, at the tree or rock in reach if there is one.
+func _swing() -> void:
+	var harvestables: Node = get_parent().get("harvestables")
+	var player := _local_player()
+	if Session.held_item == "" or harvestables == null or player == null:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_swing < int(Harvestables.SWING_SECONDS * 1000.0):
+		return
+	_last_swing = now
+	harvestables.swing(_harvest_target(), player.get_node("PlayerInput").yaw)
+
+
+## The standing tree or rock in the local player's reach, or -1.
+func _harvest_target() -> int:
+	var harvestables: Node = get_parent().get("harvestables")
+	var player := _local_player()
+	if harvestables == null or player == null:
+		return -1
+	return harvestables.nearest(player.global_position, Harvestables.REACH)
 
 
 ## The nearest thing in reach of the local player that E would use, or null.
@@ -111,8 +157,10 @@ func _open(chest: Node) -> void:
 	_chest = chest
 	_screen.visible = true
 	_chest_panel.visible = chest != null
+	_crafting_panel.visible = chest == null
+	_craft_message.text = ""
 	_hint.text = "Drag stacks between slots, or click one to send it across. Drag off the panels to drop it." \
-		if chest != null else "Drag stacks to rearrange them, or off the panel to drop them on the ground."
+		if chest != null else "Drag stacks to rearrange them, or off the panel to drop them. Right-click a tool to hold it."
 	_refresh()
 	_set_mouse_free(true)
 
@@ -152,6 +200,73 @@ func _refresh() -> void:
 	_fill(_inventory_grid, Session.inventory, false)
 	if _chest != null:
 		_fill(_chest_grid, _chest.contents, true)
+	else:
+		_fill_recipes()
+
+
+## One row per recipe: what it makes, what it takes (each ingredient showing
+## how many you have of how many it needs) and a Craft button that only works
+## when you have everything.
+func _fill_recipes() -> void:
+	for child in _recipe_list.get_children():
+		_recipe_list.remove_child(child)
+		child.queue_free()
+	for recipe in Recipes.all():
+		var result: String = recipe["result"]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.tooltip_text = "%s\n%s" % [Items.display_name(result), Items.description(result)]
+		var icon := TextureRect.new()
+		icon.texture = Items.icon(result)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(48, 48)
+		icon.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(icon)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(info)
+		var title := Label.new()
+		title.text = Items.display_name(result) + (" x%d" % recipe["count"] if recipe["count"] > 1 else "")
+		info.add_child(title)
+		var needs := HBoxContainer.new()
+		needs.add_theme_constant_override("separation", 10)
+		info.add_child(needs)
+		var short := Recipes.missing(recipe, Session.inventory)
+		for item in recipe["ingredients"]:
+			var need: int = recipe["ingredients"][item]
+			var chip := HBoxContainer.new()
+			chip.add_theme_constant_override("separation", 3)
+			chip.tooltip_text = Items.display_name(item)
+			chip.mouse_filter = Control.MOUSE_FILTER_PASS
+			var chip_icon := TextureRect.new()
+			chip_icon.texture = Items.icon(item)
+			chip_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			chip_icon.custom_minimum_size = Vector2(20, 20)
+			chip.add_child(chip_icon)
+			var amount := Label.new()
+			amount.text = "%d/%d" % [need - short.get(item, 0), need]
+			amount.add_theme_color_override("font_color",
+				Color(1.0, 0.45, 0.4) if short.has(item) else Color(0.6, 0.9, 0.55))
+			chip.add_child(amount)
+			needs.add_child(chip)
+		var craft := Button.new()
+		craft.name = "Craft_" + recipe["id"]
+		craft.text = "Craft"
+		craft.focus_mode = Control.FOCUS_NONE
+		craft.disabled = not short.is_empty()
+		craft.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		craft.pressed.connect(Session.craft.bind(recipe["id"]))
+		row.add_child(craft)
+		_recipe_list.add_child(row)
+
+
+func _on_craft_finished(recipe_id: String, message: String) -> void:
+	if message == "":
+		var recipe := Recipes.find(recipe_id)
+		message = "Crafted a %s." % Items.display_name(recipe.get("result", recipe_id))
+	_craft_message.text = message
 
 
 func _fill(grid: GridContainer, slots: Array, in_chest: bool) -> void:
@@ -184,8 +299,17 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 		button.tooltip_text = "%s\n%s" % [Items.display_name(item), Items.description(item)]
 		style.bg_color = Items.color(item).darkened(0.7)
 		button.pressed.connect(_on_slot_pressed.bind(in_chest, index))
+		if Items.is_tool_item(item) and not in_chest:
+			var held := item == Session.held_item
+			button.tooltip_text += "\n(In your hand. Right-click to put it away.)" if held \
+				else "\n(Right-click to hold it.)"
+			button.gui_input.connect(_on_tool_slot_input.bind(item))
+			if held:
+				style.border_color = Color(1.0, 0.82, 0.3)
+				style.set_border_width_all(3)
 		var count := Label.new()
-		count.text = str(slot["count"])
+		# Things that don't stack, like tools, don't need a count.
+		count.text = str(slot["count"]) if Items.max_stack(item) > 1 else ""
 		count.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 		count.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		count.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -205,6 +329,13 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 		_can_drop_on_slot.bind(in_chest),
 		_drop_on_slot.bind(in_chest, index))
 	return button
+
+
+## Right-clicking a tool holds it, or puts it away if it's already in hand.
+func _on_tool_slot_input(event: InputEvent, item: String) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		Session.hold("" if Session.held_item == item else item)
+		get_viewport().set_input_as_handled()
 
 
 ## Clicking a stack with a chest open sends it to the other side.
@@ -307,6 +438,19 @@ func _build() -> void:
 	_chest_panel = _panel("Chest")
 	_chest_grid = _chest_panel.get_meta("grid")
 	row.add_child(_chest_panel)
+	var crafting_box := VBoxContainer.new()
+	crafting_box.add_theme_constant_override("separation", 10)
+	_crafting_panel = _panel("Crafting", crafting_box)
+	_crafting_panel.custom_minimum_size.x = 320
+	_recipe_list = VBoxContainer.new()
+	_recipe_list.add_theme_constant_override("separation", 10)
+	crafting_box.add_child(_recipe_list)
+	_craft_message = Label.new()
+	_craft_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_craft_message.custom_minimum_size.x = 296
+	_craft_message.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
+	crafting_box.add_child(_craft_message)
+	row.add_child(_crafting_panel)
 	_hint = Label.new()
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.add_theme_constant_override("outline_size", 6)
@@ -314,7 +458,9 @@ func _build() -> void:
 	column.add_child(_hint)
 
 
-func _panel(title: String) -> PanelContainer:
+## A titled panel holding `content`, or a grid of slots (its "grid" meta) if
+## none is given.
+func _panel(title: String, content: Control = null) -> PanelContainer:
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.08, 0.1, 0.85)
@@ -328,6 +474,9 @@ func _panel(title: String) -> PanelContainer:
 	label.text = title
 	label.add_theme_font_size_override("font_size", 20)
 	box.add_child(label)
+	if content != null:
+		box.add_child(content)
+		return panel
 	var grid := GridContainer.new()
 	grid.columns = COLUMNS
 	box.add_child(grid)
