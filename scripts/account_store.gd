@@ -18,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -174,6 +174,39 @@ func save_inventory(username: String, character_name: String, slots: Array) -> b
 		[JSON.stringify(slots), account["id"], character_name.strip_edges().to_lower()])
 	if not ok:
 		push_error("Could not save %s's inventory in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
+## The items a character has discovered (had in their inventory at least
+## once), as item -> true. Recipes unlock from these; see scripts/recipes.gd.
+func load_discoveries(username: String, character_name: String) -> Dictionary:
+	if not is_open():
+		return {}
+	_db.query_with_bindings(
+		"SELECT c.discovered FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty():
+		return {}
+	var items = JSON.parse_string(str(_db.query_result[0]["discovered"]))
+	var discovered := {}
+	if items is Array:
+		for item in items:
+			discovered[str(item)] = true
+	return discovered
+
+
+## Saves the items a character has discovered (item -> true).
+func save_discoveries(username: String, character_name: String, discovered: Dictionary) -> bool:
+	var account := _account(username)
+	if account.is_empty():
+		return false
+	var items := discovered.keys()
+	items.sort()
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET discovered = ? WHERE account_id = ? AND name_key = ?",
+		[JSON.stringify(items), account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's discoveries in %s: %s" % [character_name, path, _db.error_message])
 	return ok
 
 
@@ -406,6 +439,20 @@ func _migrate() -> bool:
 		""" % Races.DEFAULT_SEX)
 		if not ok:
 			push_error("Could not add character sexes to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 7:
+		# The items each character has discovered, as a JSON array of ids.
+		# Existing characters discover what they're carrying when they next
+		# enter the world.
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN discovered TEXT NOT NULL DEFAULT '[]';
+			PRAGMA user_version = 7;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add discoveries to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

@@ -124,11 +124,13 @@ The inventory screen (**Tab**) has a **Crafting** window on its right. Each reci
 | Stone Pickaxe | 5 wood, 5 stone | Breaks big rocks |
 | Stone Sword | 5 wood, 5 stone | A weapon, for when there's something to fight |
 
-Crafting happens on the server, which checks you have everything and room for what you make. A tool you craft with empty hands goes straight into your hand. Otherwise right-click a tool in your inventory to hold it, and right-click it again to put it away; the tool in your hand has a gold border, and everyone sees you holding it.
+You have to discover a recipe before it shows up: once you've had at least one of each thing it takes in your inventory, a **New recipe discovered!** notice pops up at the top of the screen and the recipe appears in the list. A new character knows no recipes, so pick up some wood and stone first. What each character has discovered is saved with them, so it's still known after logging out.
+
+Crafting happens on the server, which checks you've discovered the recipe, have everything and have room for what you make. A tool you craft with empty hands goes straight into your hand. Otherwise right-click a tool in your inventory to hold it, and right-click it again to put it away; the tool in your hand has a gold border, and everyone sees you holding it.
 
 Holding an axe, walk up to a tree and left-click to swing at it. A pine takes 6 hits, a leafy tree 5 and a dead tree 3, and when it comes down it drops 2 to 7 wood on the ground where it stood, for anyone to pick up. A pickaxe breaks the big rocks in 6 hits for 4 to 7 stone. The prompt at the bottom of the screen says which tool something needs and how many hits are left. Everyone sees each hit and sees it come down. Felled trees grow back after 8 to 10 minutes, and rocks after 15, though never on top of someone standing there.
 
-The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
+The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window once a player has discovered everything it takes and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
 
 ## Layout
 

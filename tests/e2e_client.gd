@@ -9,9 +9,12 @@ extends SceneTree
 ## that the server spawns the player into the world with its race and sex. Then walks
 ## to an item, picks it up, moves it between slots, drops it on the ground and
 ## picks it up again, puts it in the test chest and takes it back, picks food
-## off the nearest plant, gathers wood and stone to craft a stone axe, chops
+## off the nearest plant, checks the stone axe recipe stays locked until wood
+## and stone have both been found and is announced when it unlocks, gathers
+## wood and stone to craft a stone axe, chops
 ## down the nearest tree with it and picks up its wood, and checks
-## the inventory is still there after re-entering the world, and that the
+## the inventory and discovered recipes are still there after re-entering
+## the world, and that the
 ## player comes back where they stood, facing the same way. Exits non-zero on
 ## failure.
 ## Against a server started with --server-password=<password>, pass the same
@@ -120,6 +123,7 @@ func _run() -> void:
 	_check(_count(result[0], _picked_item) == _picked_count and _picked_count > 0,
 		"inventory is still there after re-entering the world")
 	_check(saved == [], "leaving the world clears the client's copy of the inventory")
+	_check("stone_axe" in session.recipes, "discovered recipes are still known after re-entering the world")
 	await create_timer(0.5).timeout
 	player = world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id())
 	_check(player != null, "server spawned our player again")
@@ -257,18 +261,43 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 	var session: Node = root.get_node("Session")
 	var axe := { "wood": 5, "stone": 3 }
 	var result: Array
-	if _count(session.inventory, "wood") < 5:
-		var before: Array = session.inventory
-		result = await _call_and_wait(session.craft_finished, session.craft.bind("stone_axe"))
-		_check(result[1] != "" and session.inventory == before, "can't craft an axe without the wood and stone: %s" % result[1])
+	var ui: Node = null
+	for child in world.get_children():
+		if child.has_method("discovery_shown"):
+			ui = child
+	_check(ui != null, "there is an inventory screen")
+	# Only one of wood and stone has been picked up so far.
+	_check(not "stone_axe" in session.recipes, "the stone axe recipe is locked before finding wood and stone")
+	var before: Array = session.inventory
+	result = await _call_and_wait(session.craft_finished, session.craft.bind("stone_axe"))
+	_check(result[1].contains("discovered") and session.inventory == before,
+		"the server won't craft an undiscovered recipe: %s" % result[1])
+	var announced := []
+	var notice := []
+	var on_recipes := func(_ids: Array, new_ids: Array) -> void:
+		announced.append_array(new_ids)
+		if ui != null and not new_ids.is_empty():
+			notice.append_array(ui.discovery_shown())
+	session.recipes_changed.connect(on_recipes)
 	for item in axe:
 		while _count(session.inventory, item) < axe[item]:
 			var pickup := _nearest_pickup(world, player, item)
 			if pickup == null:
 				break
 			await _walk_to(player, pickup.global_position)
+			if not is_instance_valid(pickup):
+				continue
 			await _call_and_wait(session.inventory_changed, pickup.interact)
+			# The server despawns the picked up stack a moment after sending
+			# the inventory; wait for that so the next search doesn't find it.
+			var deadline := Time.get_ticks_msec() + 2000
+			while is_instance_valid(pickup) and not pickup.is_queued_for_deletion() and Time.get_ticks_msec() < deadline:
+				await process_frame
 		_check(_count(session.inventory, item) >= axe[item], "gathers %d %s (has %d)" % [axe[item], item, _count(session.inventory, item)])
+	session.recipes_changed.disconnect(on_recipes)
+	_check("stone_axe" in session.recipes, "finding wood and stone unlocks the stone axe recipe")
+	_check("stone_axe" in announced and announced.count("stone_axe") == 1, "the stone axe recipe is announced once (%s)" % [announced])
+	_check("Stone Axe" in notice, "a notice names the discovered recipe (%s)" % [notice])
 	var wood := _count(session.inventory, "wood")
 	var stone := _count(session.inventory, "stone")
 	result = await _call_and_wait(session.craft_finished, session.craft.bind("stone_axe"))

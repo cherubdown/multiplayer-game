@@ -57,6 +57,7 @@ func _init() -> void:
 
 	_check_world_seed()
 	_check_positions()
+	_check_discoveries()
 	_check_legacy_import()
 	_check_race_migration()
 
@@ -95,6 +96,23 @@ func _check_positions() -> void:
 	var spot := reloaded.load_position("chris", "Ragnar")
 	_check(not spot.is_empty() and spot["position"].is_equal_approx(Vector3(12.5, 3.25, -40.0)), "position survives a reload")
 	_check(not spot.is_empty() and is_equal_approx(spot["yaw"], 1.5), "facing survives a reload")
+	reloaded.close()
+
+
+## The items a character has discovered are saved per character.
+func _check_discoveries() -> void:
+	_remove_test_files()
+	var store := AccountStore.new(PATH)
+	store.register("chris", "secret1")
+	store.create_character("chris", "Ragnar")
+	store.create_character("chris", "Astrid")
+	_check(store.load_discoveries("chris", "Ragnar").is_empty(), "a new character has discovered nothing")
+	_check(store.save_discoveries("chris", "ragnar", { "wood": true, "stone": true }), "saves discoveries")
+	_check(not store.save_discoveries("nobody", "Ragnar", { "wood": true }), "rejects an unknown account")
+	_check(store.load_discoveries("chris", "Astrid").is_empty(), "discoveries are per character")
+	store.close()
+	var reloaded := AccountStore.new(PATH)
+	_check(reloaded.load_discoveries("chris", "Ragnar") == { "stone": true, "wood": true }, "discoveries survive a reload")
 	reloaded.close()
 
 
@@ -157,6 +175,8 @@ func _check_race_migration() -> void:
 	_check(store.world_seed() == "" and store.set_world_seed("old world"), "migrated database can save a world seed")
 	_check(store.load_position("old", "Sven").is_empty(), "migrated characters start at the spawn")
 	_check(store.save_position("old", "Sven", Vector3(1.0, 2.0, 3.0), -0.5), "migrated database can save positions")
+	_check(store.load_discoveries("old", "Sven").is_empty(), "migrated characters have discovered nothing yet")
+	_check(store.save_discoveries("old", "Sven", { "wood": true }), "migrated database can save discoveries")
 	store.close()
 
 

@@ -4,7 +4,8 @@ extends CanvasLayer
 ## that has a player (not a dedicated server).
 ##
 ## Tab (or I) shows the inventory, with what can be crafted on the right (see
-## scripts/recipes.gd). E picks up the nearest item, picks the nearest plant
+## scripts/recipes.gd). Only recipes the character has discovered are listed;
+## a notice pops up at the top of the screen when one is discovered. E picks up the nearest item, picks the nearest plant
 ## (see scripts/forage.gd) or opens the nearest chest. Drag a stack onto
 ## another slot to move it (in the inventory, in the chest or between the two),
 ## or off the panels to drop it on the ground; with a chest open, the chest
@@ -33,6 +34,11 @@ var _crafting_panel: Control
 var _recipe_list: VBoxContainer
 ## The last thing the server said about crafting, shown under the recipes.
 var _craft_message: Label
+## Pops up at the top of the screen when recipes are discovered.
+var _discovery: PanelContainer
+var _discovery_heading: Label
+var _discovery_list: VBoxContainer
+var _discovery_tween: Tween
 ## The chest whose screen is showing, or null.
 var _chest: Node
 ## Time.get_ticks_msec() of the last swing, so holding the button doesn't spam.
@@ -44,6 +50,7 @@ func _ready() -> void:
 	Session.inventory_changed.connect(func(_slots: Array) -> void: _refresh())
 	Session.held_changed.connect(func(_item: String) -> void: _refresh())
 	Session.craft_finished.connect(_on_craft_finished)
+	Session.recipes_changed.connect(_on_recipes_changed)
 	Session.left_world.connect(_close)
 	Session.leaving_world.connect(_close)
 	for chest in get_tree().get_nodes_in_group("interactable"):
@@ -204,14 +211,23 @@ func _refresh() -> void:
 		_fill_recipes()
 
 
-## One row per recipe: what it makes, what it takes (each ingredient showing
-## how many you have of how many it needs) and a Craft button that only works
-## when you have everything.
+## One row per discovered recipe: what it makes, what it takes (each
+## ingredient showing how many you have of how many it needs) and a Craft
+## button that only works when you have everything.
 func _fill_recipes() -> void:
 	for child in _recipe_list.get_children():
 		_recipe_list.remove_child(child)
 		child.queue_free()
+	if Session.recipes.is_empty():
+		var none := Label.new()
+		none.text = "No recipes yet. Gather materials to discover what you can make with them."
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.custom_minimum_size.x = 296
+		none.add_theme_color_override("font_color", Color(0.7, 0.7, 0.68))
+		_recipe_list.add_child(none)
 	for recipe in Recipes.all():
+		if not recipe["id"] in Session.recipes:
+			continue
 		var result: String = recipe["result"]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -260,6 +276,48 @@ func _fill_recipes() -> void:
 		craft.pressed.connect(Session.craft.bind(recipe["id"]))
 		row.add_child(craft)
 		_recipe_list.add_child(row)
+
+
+## Refreshes the list and, for recipes just discovered, pops up a notice
+## naming each.
+func _on_recipes_changed(_recipe_ids: Array, new_ids: Array) -> void:
+	_refresh()
+	if new_ids.is_empty():
+		return
+	for child in _discovery_list.get_children():
+		_discovery_list.remove_child(child)
+		child.queue_free()
+	for id in new_ids:
+		var result: String = Recipes.find(id).get("result", id)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var icon := TextureRect.new()
+		icon.texture = Items.icon(result)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(32, 32)
+		row.add_child(icon)
+		var label := Label.new()
+		label.text = Items.display_name(result)
+		label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(label)
+		_discovery_list.add_child(row)
+	_discovery_heading.text = "New recipe discovered!" if new_ids.size() == 1 else "New recipes discovered!"
+	if _discovery_tween != null:
+		_discovery_tween.kill()
+	_discovery.visible = true
+	_discovery.modulate.a = 1.0
+	_discovery_tween = create_tween()
+	_discovery_tween.tween_interval(4.0)
+	_discovery_tween.tween_property(_discovery, "modulate:a", 0.0, 1.0)
+	_discovery_tween.tween_callback(_discovery.hide)
+
+
+## Whether the recipe-discovered notice is up, and what it names.
+func discovery_shown() -> Array:
+	if not _discovery.visible:
+		return []
+	return _discovery_list.get_children().map(func(row: Node) -> String: return row.get_child(1).text)
 
 
 func _on_craft_finished(recipe_id: String, message: String) -> void:
@@ -412,6 +470,35 @@ func _build() -> void:
 	_prompt.add_theme_color_override("font_outline_color", Color.BLACK)
 	add_child(_prompt)
 
+	# The recipe-discovered notice, top centre, over everything but the
+	# inventory screen. Doesn't take clicks.
+	var top := CenterContainer.new()
+	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top.offset_top = 40
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(top)
+	var discovery_box := VBoxContainer.new()
+	discovery_box.add_theme_constant_override("separation", 6)
+	discovery_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var heading := Label.new()
+	_discovery_heading = heading
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 20)
+	heading.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+	discovery_box.add_child(heading)
+	_discovery_list = VBoxContainer.new()
+	_discovery_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	discovery_box.add_child(_discovery_list)
+	var hint := Label.new()
+	hint.text = "See it in the crafting window (Tab)."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", Color(0.75, 0.75, 0.72))
+	discovery_box.add_child(hint)
+	_discovery = _panel("", discovery_box)
+	_discovery.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_discovery.visible = false
+	top.add_child(_discovery)
+
 	_screen = Control.new()
 	_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -470,10 +557,11 @@ func _panel(title: String, content: Control = null) -> PanelContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
-	var label := Label.new()
-	label.text = title
-	label.add_theme_font_size_override("font_size", 20)
-	box.add_child(label)
+	if title != "":
+		var label := Label.new()
+		label.text = title
+		label.add_theme_font_size_override("font_size", 20)
+		box.add_child(label)
 	if content != null:
 		box.add_child(content)
 		return panel
