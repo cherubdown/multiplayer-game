@@ -37,19 +37,34 @@ func _run() -> void:
 		_check(Items.icon(item) != null, "%s has an icon" % item)
 		_check(Items.tool_mesh(item).get_surface_count() >= 2, "%s has a mesh to hold" % item)
 
+	# Recipes unlock once every ingredient has been discovered.
+	_check(Recipes.unlocked({}) == [], "a new character knows no recipes")
+	_check(Recipes.unlocked({ "wood": true, "berries": true }) == [], "wood alone unlocks nothing")
+	_check(Recipes.unlocked({ "wood": true, "stone": true }) == ["stone_axe", "stone_pickaxe", "stone_sword"],
+		"wood and stone unlock the stone tools, in order")
+	_check(not Recipes.is_unlocked({}, { "wood": true }), "a missing recipe is never unlocked")
+	var stocked := Inventory.new(4)
+	stocked.add("wood", 10)
+	stocked.add("stone", 10)
+	var stocked_before := stocked.to_array()
+	var locked := Recipes.craft("stone_axe", stocked, { "wood": true })
+	_check(locked.contains("discovered"), "won't craft an undiscovered recipe: %s" % locked)
+	_check(stocked.to_array() == stocked_before, "a locked craft leaves the inventory alone")
+
+	var known := { "wood": true, "stone": true }
 	var inv := Inventory.new(4)
 	inv.add("wood", 7)
 	inv.add("stone", 2)
 	_check(Recipes.missing(Recipes.find("stone_axe"), inv) == { "stone": 1 }, "says what's missing")
 	_check(Recipes.missing(Recipes.find("stone_axe"), inv.to_array()) == { "stone": 1 }, "works on the client's slot array too")
 	var before := inv.to_array()
-	var err := Recipes.craft("stone_axe", inv)
+	var err := Recipes.craft("stone_axe", inv, known)
 	_check(err.contains("1 more Stone"), "won't craft without enough: %s" % err)
 	_check(inv.to_array() == before, "a failed craft leaves the inventory alone")
-	_check(Recipes.craft("nothing", inv) != "", "won't craft an unknown recipe")
+	_check(Recipes.craft("nothing", inv, known) != "", "won't craft an unknown recipe")
 
 	inv.add("stone", 4)
-	err = Recipes.craft("stone_axe", inv)
+	err = Recipes.craft("stone_axe", inv, known)
 	_check(err == "", "crafts a stone axe: %s" % err)
 	_check(inv.count_of("stone_axe") == 1 and inv.count_of("wood") == 2 and inv.count_of("stone") == 3,
 		"crafting uses up the ingredients and gives the tool")
@@ -60,13 +75,13 @@ func _run() -> void:
 	var full := Inventory.new(2)
 	full.add("wood", 5)
 	full.add("stone", 5)
-	_check(Recipes.craft("stone_pickaxe", full) == "" and full.count_of("stone_pickaxe") == 1,
+	_check(Recipes.craft("stone_pickaxe", full, known) == "" and full.count_of("stone_pickaxe") == 1,
 		"crafts into a slot its ingredients emptied")
 	var packed := Inventory.new(2)
 	packed.add("wood", 50)
 	packed.add("stone", 50)
 	before = packed.to_array()
-	err = Recipes.craft("stone_sword", packed)
+	err = Recipes.craft("stone_sword", packed, known)
 	_check(err.contains("No room"), "won't craft with no room for the result: %s" % err)
 	_check(packed.to_array() == before, "nothing is used up when there's no room")
 

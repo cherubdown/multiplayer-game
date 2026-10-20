@@ -28,6 +28,9 @@ signal inventory_changed(slots: Array)
 ## Client side: the server answered a craft request; message is "" if it
 ## worked, else why not.
 signal craft_finished(recipe_id: String, message: String)
+## Client side: the recipes this client's character knows (ids, in order),
+## and which of them it has only just discovered, to announce.
+signal recipes_changed(recipe_ids: Array, new_ids: Array)
 ## Client side: the item this client's character holds changed ("" for none).
 signal held_changed(item: String)
 
@@ -61,6 +64,9 @@ var character_name := ""
 var roster := {}
 ## The slots of this client's inventory, [] when not in the world.
 var inventory: Array = []
+## The ids of the recipes this client's character knows (see
+## scripts/recipes.gd), [] when not in the world.
+var recipes: Array = []
 ## The item this client's character holds in its hand, "" for none.
 var held_item := ""
 ## Every peer: the seed of the world being played, "" until the server says.
@@ -73,6 +79,7 @@ var _in_world := {}           # peer id -> character name
 var _races := {}              # peer id -> race of the character in the world
 var _sexes := {}              # peer id -> sex of the character in the world
 var _inventories := {}        # peer id -> Inventory of the character in the world
+var _discovered := {}         # peer id -> items the character has ever had (item -> true)
 var _saved_spots := {}        # peer id -> where the character last left the world (see AccountStore.load_position())
 var _bodies := {}             # peer id -> the character's player node in the world
 var _held := {}               # peer id -> the tool the character holds, if any
@@ -109,16 +116,28 @@ func inventory_of(peer: int) -> Inventory:
 	return _inventories.get(peer)
 
 
-## Server side: saves a peer's inventory and sends it to them.
+## Server side: saves a peer's inventory and sends it to them. Anything in it
+## for the first time is discovered, and if that unlocks recipes the peer is
+## told so they can announce them.
 func inventory_updated(peer: int) -> void:
 	var inv: Inventory = _inventories.get(peer)
 	if inv == null:
 		return
 	_accounts().save_inventory(_usernames[peer], _in_world[peer], inv.to_array())
+	var unlocked := _discover(peer)
+	if not unlocked.is_empty():
+		for id in unlocked:
+			print("Peer %d (%s) discovered the %s recipe" % [peer, _in_world[peer], Items.display_name(Recipes.find(id)["result"])])
+		_set_recipes.rpc_id(peer, Recipes.unlocked(_discovered[peer]), unlocked)
 	_set_inventory.rpc_id(peer, inv.to_array())
 	# A tool that's been dropped or put away can't stay in the hand.
 	if held_of(peer) != "" and inv.count_of(held_of(peer)) == 0:
 		_set_held_of(peer, "")
+
+
+## Server side: the items a peer's character has discovered (item -> true).
+func discovered_of(peer: int) -> Dictionary:
+	return _discovered.get(peer, {})
 
 
 ## Server side: the tool a peer's character holds, or "".
@@ -165,12 +184,14 @@ func reset() -> void:
 	character_name = ""
 	roster = {}
 	inventory = []
+	recipes = []
 	world_seed = ""
 	_usernames.clear()
 	_in_world.clear()
 	_races.clear()
 	_sexes.clear()
 	_inventories.clear()
+	_discovered.clear()
 	_saved_spots.clear()
 	_bodies.clear()
 	_failed_logins.clear()
@@ -331,9 +352,14 @@ func _request_enter_world(p_name) -> void:
 	var inv := Inventory.new(INVENTORY_SLOTS)
 	inv.load_array(_accounts().load_inventory(account, p_name))
 	_inventories[peer] = inv
+	_discovered[peer] = _accounts().load_discoveries(account, p_name)
+	# Quietly: whatever a character carries is already known to them, such as
+	# one saved before recipes had to be discovered.
+	_discover(peer)
 	_saved_spots[peer] = _accounts().load_position(account, p_name)
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.describe(race, sex)])
 	_entered_world.rpc_id(peer, p_name)
+	_set_recipes.rpc_id(peer, Recipes.unlocked(_discovered[peer]), [])
 	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
@@ -366,7 +392,7 @@ func _request_craft(recipe_id) -> void:
 	var inv := inventory_of(peer)
 	if inv == null or not recipe_id is String:
 		return
-	var err := Recipes.craft(recipe_id, inv)
+	var err := Recipes.craft(recipe_id, inv, discovered_of(peer))
 	if err == "":
 		var made: String = Recipes.find(recipe_id)["result"]
 		print("Peer %d (%s) crafted a %s" % [peer, _in_world[peer], Items.display_name(made)])
@@ -433,6 +459,12 @@ func _set_inventory(slots: Array) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _set_recipes(recipe_ids: Array, new_ids: Array) -> void:
+	recipes = recipe_ids
+	recipes_changed.emit(recipe_ids, new_ids)
+
+
+@rpc("authority", "call_local", "reliable")
 func _craft_result(recipe_id: String, message: String) -> void:
 	craft_finished.emit(recipe_id, message)
 
@@ -447,6 +479,7 @@ func _set_held(item: String) -> void:
 func _left_world() -> void:
 	character_name = ""
 	inventory = []
+	recipes = []
 	held_item = ""
 	left_world.emit()
 
@@ -529,11 +562,29 @@ func _remove_from_world(peer: int) -> void:
 	_races.erase(peer)
 	_sexes.erase(peer)
 	_inventories.erase(peer)
+	_discovered.erase(peer)
 	_saved_spots.erase(peer)
 	_bodies.erase(peer)
 	_held.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
+
+
+## Server side: marks everything in a peer's inventory as discovered, saving
+## any that are new. Returns the ids of the recipes that unlocked.
+func _discover(peer: int) -> Array:
+	var inv: Inventory = _inventories[peer]
+	var known: Dictionary = _discovered[peer]
+	var before := Recipes.unlocked(known)
+	var found := false
+	for slot in inv.slots:
+		if slot != null and not known.has(slot["item"]):
+			known[slot["item"]] = true
+			found = true
+	if not found:
+		return []
+	_accounts().save_discoveries(_usernames[peer], _in_world[peer], known)
+	return Recipes.unlocked(known).filter(func(id: String) -> bool: return not id in before)
 
 
 ## Server side: puts `item` in a peer's hand ("" for nothing), on their

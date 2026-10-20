@@ -7,6 +7,11 @@ extends RefCounted
 ## scripts/items.gd), how many, and the items it uses up. The crafting window
 ## lists it and the server accepts it with no other changes. Recipes show in
 ## the order they're listed here.
+##
+## A character only knows a recipe once they've discovered every item it uses,
+## that is, once each has been in their inventory at least once (see
+## Session.inventory_updated()). Until then it isn't listed and the server
+## won't craft it.
 
 const Items := preload("res://scripts/items.gd")
 
@@ -30,6 +35,27 @@ static func find(id: String) -> Dictionary:
 	return {}
 
 
+## Whether a character who has discovered `discovered` (item -> true) knows
+## `recipe`.
+static func is_unlocked(recipe: Dictionary, discovered: Dictionary) -> bool:
+	if recipe.is_empty():
+		return false
+	for item in recipe["ingredients"]:
+		if not discovered.has(item):
+			return false
+	return true
+
+
+## The ids of every recipe a character who has discovered `discovered` knows,
+## in order.
+static func unlocked(discovered: Dictionary) -> Array:
+	var ids := []
+	for recipe in RECIPES:
+		if is_unlocked(recipe, discovered):
+			ids.append(recipe["id"])
+	return ids
+
+
 ## How many more of each ingredient `inventory` needs before it can make
 ## `recipe`: item -> count, empty when it has everything. `inventory` is an
 ## Inventory or its slot array (as the client has it).
@@ -48,12 +74,15 @@ static func can_craft(recipe: Dictionary, inventory) -> bool:
 
 
 ## Server side: uses up the ingredients in `inventory` (an Inventory) and puts
-## the result in. Returns "" on success, or why it couldn't, in which case the
+## the result in, if the character has discovered the recipe (see
+## is_unlocked()). Returns "" on success, or why it couldn't, in which case the
 ## inventory is left as it was.
-static func craft(id: String, inventory) -> String:
+static func craft(id: String, inventory, discovered: Dictionary) -> String:
 	var recipe := find(id)
 	if recipe.is_empty():
 		return "There's no recipe for that."
+	if not is_unlocked(recipe, discovered):
+		return "You haven't discovered that recipe yet."
 	var short := missing(recipe, inventory)
 	if not short.is_empty():
 		var needs := []
