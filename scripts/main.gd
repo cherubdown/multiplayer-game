@@ -22,6 +22,10 @@ extends Control
 ## The test world is loaded under this node on every peer as soon as a game
 ## starts (same path everywhere, so MultiplayerSpawner can replicate players
 ## into it). Once in the world, the menu becomes an overlay toggled with Esc.
+##
+## Quit (on the Host / Join menu), Quit game (on the in-world overlay and in
+## the options window) and closing the window all go through Network.quit_game(),
+## which saves and disconnects before the app closes.
 
 const WORLD_SCENE := preload("res://scenes/test_world.tscn")
 const AccountStore := preload("res://scripts/account_store.gd")
@@ -67,6 +71,7 @@ func _ready() -> void:
 	Session.roster_changed.connect(_on_roster_changed)
 	%HostButton.pressed.connect(_on_host_pressed)
 	%JoinButton.pressed.connect(_on_join_pressed)
+	%QuitButton.pressed.connect(Network.quit_game)
 	%LoginButton.pressed.connect(_on_login_pressed)
 	%RegisterButton.pressed.connect(_on_register_pressed)
 	%DisconnectButton.pressed.connect(_on_leave_pressed)
@@ -83,6 +88,7 @@ func _ready() -> void:
 	%LogoutButton.pressed.connect(_on_logout_pressed)
 	%CharacterSelectButton.pressed.connect(Session.leave_world)
 	%LeaveButton.pressed.connect(_on_leave_pressed)
+	%QuitGameButton.pressed.connect(OptionsMenu.quit_confirm.popup_centered)
 	_port.value = Network.DEFAULT_PORT
 	_address.text = Network.DEFAULT_ADDRESS
 	_show(_menu)
