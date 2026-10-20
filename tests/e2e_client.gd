@@ -285,7 +285,14 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 			if pickup == null:
 				break
 			await _walk_to(player, pickup.global_position)
+			if not is_instance_valid(pickup):
+				continue
 			await _call_and_wait(session.inventory_changed, pickup.interact)
+			# The server despawns the picked up stack a moment after sending
+			# the inventory; wait for that so the next search doesn't find it.
+			var deadline := Time.get_ticks_msec() + 2000
+			while is_instance_valid(pickup) and not pickup.is_queued_for_deletion() and Time.get_ticks_msec() < deadline:
+				await process_frame
 		_check(_count(session.inventory, item) >= axe[item], "gathers %d %s (has %d)" % [axe[item], item, _count(session.inventory, item)])
 	session.recipes_changed.disconnect(on_recipes)
 	_check("stone_axe" in session.recipes, "finding wood and stone unlocks the stone axe recipe")
