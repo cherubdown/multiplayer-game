@@ -89,6 +89,12 @@ func _check_foliage(terrain: Node3D) -> void:
 	_check(shrubs.size() > 10, "bushes and birches are scattered over the island")
 	var cover: Dictionary = foliage.cover_for_chunk(Vector2i(0, 0))
 	_check(cover.has("tuft") and cover["tuft"][0].size() > 200, "the spawn meadow is covered in grass")
+	var small := 0
+	var large := 0
+	for t: Transform3D in cover["tuft"][0]:
+		small += int(t.basis.get_scale().y < 0.5)
+		large += int(t.basis.get_scale().y > 0.9)
+	_check(small > large * 2 and large > 0, "grass grows in sizes, mostly small and rarely large")
 	var again: Dictionary = foliage.cover_for_chunk(Vector2i(0, 0))
 	_check(cover.keys() == again.keys() and cover["tuft"][0] == again["tuft"][0], "ground cover is the same every time")
 	var other := Terrain.new()
