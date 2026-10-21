@@ -69,6 +69,9 @@ const PLANTS := {
 	"dead_bush": ["dead_bush", Vector2(0.8, 1.4), [Color(1, 1, 1)]],
 	"shrub": ["bush", Vector2(0.5, 0.9), [Color(0.5, 0.5, 0.26), Color(0.42, 0.45, 0.22)]],
 }
+## Grass tufts come in three sizes: [share of tufts, scale]. The scale
+## multiplies the plant's own range, so large is the full-size tuft.
+const TUFT_SIZES := [[0.5, 0.4], [0.32, 0.65], [0.18, 1.0]]
 ## Thin meshes seen from both sides. The rest are closed shapes.
 const TWO_SIDED := ["tuft", "flower", "fern", "reeds"]
 ## Meshes that cast shadows. Small plants don't, which saves a lot of drawing.
@@ -195,13 +198,26 @@ func _scatter(rng: RandomNumberGenerator, origin: Vector2, cells: int, cell: flo
 				var info: Array = PLANTS[plant]
 				var scale: Vector2 = info[1]
 				var tints: Array = info[2]
-				var basis := Basis(Vector3.UP, turn).scaled(Vector3.ONE * lerpf(scale.x, scale.y, size))
+				var grow := lerpf(scale.x, scale.y, size)
+				if info[0] == "tuft":
+					grow = _tuft_scale(scale, size)
+				var basis := Basis(Vector3.UP, turn).scaled(Vector3.ONE * grow)
 				if not placed.has(info[0]):
 					placed[info[0]] = [[], []]
 				placed[info[0]][0].append(Transform3D(basis, Vector3(x - center.x, h - 0.05, z - center.y)))
 				placed[info[0]][1].append(tints[int(pick * tints.size()) % tints.size()])
 				break
 	return placed
+
+
+## Picks a tuft's size from TUFT_SIZES with `size`, then its scale within
+## that size from what's left of the same roll.
+func _tuft_scale(scale: Vector2, size: float) -> float:
+	for tier in TUFT_SIZES:
+		if size < tier[0]:
+			return lerpf(scale.x, scale.y, size / tier[0]) * tier[1]
+		size -= tier[0]
+	return scale.y * TUFT_SIZES[-1][1]
 
 
 func _steep(x: float, z: float, h: float) -> bool:
