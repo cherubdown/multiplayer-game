@@ -70,18 +70,18 @@ func _check_spots(gen: WorldGen) -> void:
 func _check_picking(forage: Node, bush: int, tree: int) -> void:
 	var at: Vector3 = forage.spots[bush]["position"]
 	_check(forage.nearest(at + Vector3(1.0, 0.0, 0.0), 2.5) == bush, "finds the plant next to a player")
-	_check(forage.nearest_plant(at, 2.5) != null, "draws the plant")
+	_check(forage.nearest_plant(at, 2.5) != null and forage.is_shown(bush, "Fruit"), "draws the plant")
+	_check_instancing(forage)
 	_check(forage.nearest(at + Vector3(10.0, 0.0, 0.0), 2.5) != bush, "doesn't reach a plant far away")
 
 	_check(forage.take(bush, 0) == 4, "a raspberry bush gives 4 raspberries")
 	_check(forage.picks_left(bush) == 0 and forage.take(bush, 0) == 0, "a picked bush has nothing left")
 	_check(forage.nearest(at, 2.5) != bush, "a picked bush isn't offered to pick")
-	var fruit: Node3D = forage._plants[bush].get_node("Fruit")
-	_check(not fruit.visible, "a picked bush loses its berries")
+	_check(forage.is_shown(bush, "Body") and not forage.is_shown(bush, "Fruit"), "a picked bush loses its berries")
 	forage.regrow(239000)
 	_check(forage.picks_left(bush) == 0, "berries don't grow back straight away")
 	forage.regrow(240000)
-	_check(forage.picks_left(bush) == 1 and fruit.visible and not forage.left.has(bush), "berries grow back")
+	_check(forage.picks_left(bush) == 1 and forage.is_shown(bush, "Fruit") and not forage.left.has(bush), "berries grow back")
 
 	var full: int = forage.spots[tree]["picks"]
 	_check(full >= 3 and forage.prompt_for(tree).ends_with("(%d left)" % full), "an apple tree says how many apples are on it")
@@ -89,12 +89,33 @@ func _check_picking(forage: Node, bush: int, tree: int) -> void:
 	_check(forage.picks_left(tree) == full - 2, "picking takes apples off the tree")
 	var shown := 0
 	for n in full:
-		shown += 1 if forage._plants[tree].get_node("Apple%d" % n).visible else 0
+		shown += 1 if forage.is_shown(tree, "Apple%d" % n) else 0
 	_check(shown == full - 2, "the tree shows the apples left (%d of %d)" % [shown, full - 2])
 	forage.regrow(120000)
 	_check(forage.picks_left(tree) == full - 1, "apples grow back one at a time")
 	forage.regrow(240000)
 	_check(forage.picks_left(tree) == full and not forage.left.has(tree), "the tree fills up again")
+
+
+## Every copy of a mesh in a region is drawn by one MultiMesh, and every part
+## of every plant has an instance in one.
+func _check_instancing(forage: Node) -> void:
+	var regions := forage.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Plants_"))
+	var instanced := 0
+	var single := 0
+	for region in regions:
+		for child in region.get_children():
+			if child is MultiMeshInstance3D:
+				instanced += child.multimesh.instance_count
+			else:
+				single += 1
+	for plant in forage._plants.values():
+		single += plant.get_child_count()
+	var parts := 0
+	for spot in forage._parts.values():
+		parts += spot.size()
+	_check(regions.size() > 1 and single == 0 and instanced == parts and parts >= forage.spots.size(),
+		"plants are drawn with one MultiMesh per mesh per region (%d regions, %d instances)" % [regions.size(), instanced])
 
 
 func _first(spots: Array, kind: String) -> int:
