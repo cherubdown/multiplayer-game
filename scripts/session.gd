@@ -81,6 +81,7 @@ var _sexes := {}              # peer id -> sex of the character in the world
 var _inventories := {}        # peer id -> Inventory of the character in the world
 var _discovered := {}         # peer id -> items the character has ever had (item -> true)
 var _saved_spots := {}        # peer id -> where the character last left the world (see AccountStore.load_position())
+var _saved_health := {}       # peer id -> the character's health when it last left the world, -1 for full
 var _bodies := {}             # peer id -> the character's player node in the world
 var _held := {}               # peer id -> the tool the character holds, if any
 var _failed_logins := {}      # peer id -> count
@@ -157,14 +158,20 @@ func saved_spot_of(peer: int) -> Dictionary:
 	return _saved_spots.get(peer, {})
 
 
+## Server side: a peer's character's health when it last left the world, or
+## -1 to start at full health.
+func saved_health_of(peer: int) -> int:
+	return _saved_health.get(peer, -1)
+
+
 ## Server side: the world calls this with each player it spawns, so where the
 ## player stands can be saved when they leave (and every so often in between).
 func set_player_body(peer: int, body: Node3D) -> void:
 	_bodies[peer] = body
 
 
-## Server side: saves where every player in the world is standing, in case the
-## server stops without them leaving first.
+## Server side: saves where every player in the world is standing (and their
+## health), in case the server stops without them leaving first.
 func save_positions() -> void:
 	for peer in _in_world:
 		_save_position(peer)
@@ -193,6 +200,7 @@ func reset() -> void:
 	_inventories.clear()
 	_discovered.clear()
 	_saved_spots.clear()
+	_saved_health.clear()
 	_bodies.clear()
 	_failed_logins.clear()
 	_held.clear()
@@ -357,6 +365,7 @@ func _request_enter_world(p_name) -> void:
 	# one saved before recipes had to be discovered.
 	_discover(peer)
 	_saved_spots[peer] = _accounts().load_position(account, p_name)
+	_saved_health[peer] = _accounts().load_health(account, p_name)
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.describe(race, sex)])
 	_entered_world.rpc_id(peer, p_name)
 	_set_recipes.rpc_id(peer, Recipes.unlocked(_discovered[peer]), [])
@@ -564,6 +573,7 @@ func _remove_from_world(peer: int) -> void:
 	_inventories.erase(peer)
 	_discovered.erase(peer)
 	_saved_spots.erase(peer)
+	_saved_health.erase(peer)
 	_bodies.erase(peer)
 	_held.erase(peer)
 	player_left.emit(peer)
@@ -605,6 +615,7 @@ func _save_position(peer: int) -> void:
 	if not is_instance_valid(body) or not body.is_inside_tree() or not _in_world.has(peer):
 		return
 	_accounts().save_position(_usernames[peer], _in_world[peer], body.global_position, body.global_rotation.y)
+	_accounts().save_health(_usernames[peer], _in_world[peer], body.health)
 
 
 func _broadcast_roster() -> void:

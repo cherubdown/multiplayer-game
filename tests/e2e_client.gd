@@ -11,10 +11,11 @@ extends SceneTree
 ## picks it up again, puts it in the test chest and takes it back, picks food
 ## off the nearest plant, checks the stone axe recipe stays locked until wood
 ## and stone have both been found and is announced when it unlocks, gathers
-## wood and stone to craft a stone axe, chops
-## down the nearest tree with it and picks up its wood, and checks
-## the inventory and discovered recipes are still there after re-entering
-## the world, and that the
+## wood and stone to craft a stone axe, crafts a wood sword and fights the
+## test Big Frog with it (getting bitten, and killing it in two hits), chops
+## down the nearest tree with the axe and picks up its wood, and checks
+## the inventory, discovered recipes and health are still there after
+## re-entering the world, and that the
 ## player comes back where they stood, facing the same way. Exits non-zero on
 ## failure.
 ## Against a server started with --server-password=<password>, pass the same
@@ -93,6 +94,7 @@ func _run() -> void:
 	_check(player != null and player.character_name == "Ragnar", "player carries the character name")
 	_check(player != null and player.race == "dwarf", "player carries the character's race")
 	_check(player != null and player.sex == "female", "player carries the character's sex")
+	_check(player != null and player.health == 50, "a new character has 50 health")
 	# Give the server time to drop the player onto the ground.
 	await create_timer(1.5).timeout
 	if player != null:
@@ -110,10 +112,12 @@ func _run() -> void:
 	# Turn somewhere the spawn would never face, and remember where we stand.
 	var left_at := Vector3.ZERO
 	var left_facing := 0.0
+	var left_health := 0
 	if player != null:
 		await _turn_to(player, 2.0)
 		left_at = player.global_position
 		left_facing = player.global_rotation.y
+		left_health = player.health
 	await _call_and_wait(session.left_world, session.leave_world)
 	await create_timer(0.5).timeout
 	_check(world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id()) == null, "leaving despawns the player")
@@ -135,6 +139,9 @@ func _run() -> void:
 			"faces the same way (%.2f, left facing %.2f)" % [player.global_rotation.y, left_facing])
 		var input: Node = player.get_node("PlayerInput")
 		_check(absf(angle_difference(input.yaw, left_facing)) < 0.05, "the camera looks the way the character faces")
+		# Health may have crept back up a point while re-entering.
+		_check(player.health >= left_health and player.health <= left_health + 1,
+			"comes back with the same health (%d, left with %d)" % [player.health, left_health])
 
 	print("E2E: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
 	# Quit while still in the world, as the Quit game button does. The server
@@ -305,6 +312,9 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 		and _count(session.inventory, "stone") == stone - 3, "crafting uses 5 wood and 3 stone for the axe")
 	_check(session.held_item == "stone_axe" and player.held_item == "stone_axe", "the new axe goes into the empty hand")
 
+	await _check_fighting(world, player)
+	await _call_and_wait(session.held_changed, session.hold.bind("stone_axe"))
+
 	var harvest: Node = world.harvestables
 	var tree := _clear_tree(world, player.global_position)
 	_check(tree >= 0, "there's a tree to chop")
@@ -331,6 +341,89 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 		await _walk_to(player, logs.global_position)
 		await _call_and_wait(session.inventory_changed, logs.interact)
 		_check(_count(session.inventory, "wood") == wood + amount, "picks up the tree's %d wood" % amount)
+
+
+## Gathers wood for a wood sword, crafts it, holds it, walks up to the test
+## Big Frog, lets it bite a couple of times, then kills it in two hits.
+func _check_fighting(world: Node, player: Node3D) -> void:
+	var session: Node = root.get_node("Session")
+	var hud: Node = null
+	for child in world.get_children():
+		if child.has_method("health_text"):
+			hud = child
+	_check(hud != null, "there is a health bar on screen")
+	# The frog may already have had a go at us if we passed it gathering.
+	_check(hud != null and hud.health_text() == "%d / 50" % player.health,
+		"the health bar shows %d / 50 (%s)" % [player.health, hud.health_text() if hud else ""])
+	_check("wood_sword" in session.recipes, "finding wood unlocks the wood sword recipe")
+	while _count(session.inventory, "wood") < 5:
+		var pickup := _nearest_pickup(world, player, "wood")
+		if pickup == null:
+			break
+		await _walk_to(player, pickup.global_position)
+		if not is_instance_valid(pickup):
+			continue
+		await _call_and_wait(session.inventory_changed, pickup.interact)
+		var deadline := Time.get_ticks_msec() + 2000
+		while is_instance_valid(pickup) and not pickup.is_queued_for_deletion() and Time.get_ticks_msec() < deadline:
+			await process_frame
+	var wood := _count(session.inventory, "wood")
+	var result: Array = await _call_and_wait(session.craft_finished, session.craft.bind("wood_sword"))
+	_check(result[1] == "", "crafts a wood sword: %s" % result[1])
+	await create_timer(0.3).timeout
+	_check(_count(session.inventory, "wood_sword") == 1 and _count(session.inventory, "wood") == wood - 5,
+		"crafting uses 5 wood for the wood sword")
+	await _call_and_wait(session.held_changed, session.hold.bind("wood_sword"))
+	_check(session.held_item == "wood_sword", "holds the wood sword")
+	await create_timer(0.3).timeout
+	_check(player.held_item == "wood_sword", "everyone sees the wood sword in hand")
+
+	var frogs: Array = world.get_node("Enemies").get_children()
+	_check(frogs.size() == 1, "there is a Big Frog by the spawn (%d)" % frogs.size())
+	if frogs.is_empty():
+		return
+	var frog: Node3D = frogs[0]
+	_check(frog.health == 20, "the Big Frog has 20 health")
+	# Walk up to it; it comes to meet us once we're close.
+	var input: Node = player.get_node("PlayerInput")
+	input.set_process(false)
+	var deadline := Time.get_ticks_msec() + 15000
+	while is_instance_valid(frog) and frog.gap_to(player.global_position) > frog.REACH - 0.4 \
+			and Time.get_ticks_msec() < deadline:
+		var offset: Vector3 = frog.global_position - player.global_position
+		input.yaw = atan2(-offset.x, -offset.z)
+		input.direction = Vector2(0.0, -1.0)
+		await physics_frame
+	input.direction = Vector2.ZERO
+	_check(is_instance_valid(frog) and frog.gap_to(player.global_position) <= frog.REACH,
+		"walks up to the Big Frog (%.1f m)" % [frog.gap_to(player.global_position) if is_instance_valid(frog) else -1.0])
+	var bitten := []
+	var on_hurt := func(new: int, old: int) -> void:
+		if new < old:
+			bitten.append(old - new)
+	player.health_changed.connect(on_hurt)
+	deadline = Time.get_ticks_msec() + 8000
+	while bitten.size() < 2 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	player.health_changed.disconnect(on_hurt)
+	_check(bitten.size() >= 2 and bitten.all(func(n: int) -> bool: return n == 5),
+		"the Big Frog bites for 5 at a time (%s, health %d)" % [bitten, player.health])
+	await create_timer(0.2).timeout
+	_check(hud != null and hud.health_text() == "%d / 50" % player.health, "the health bar shows it (%s)" % [hud.health_text() if hud else ""])
+	for hit in 2:
+		if not is_instance_valid(frog):
+			break
+		var before: int = frog.health
+		var offset: Vector3 = frog.global_position - player.global_position
+		frog.attack(atan2(-offset.x, -offset.z))
+		deadline = Time.get_ticks_msec() + 2000
+		while is_instance_valid(frog) and frog.health == before and Time.get_ticks_msec() < deadline:
+			await process_frame
+		_check(is_instance_valid(frog) and frog.health == before - 10, "a wood sword hit takes 10 off (%d left)" % [frog.health if is_instance_valid(frog) else -1])
+		await create_timer(frog.SWING_SECONDS).timeout
+	_check(not is_instance_valid(frog) or frog.health == 0, "two hits kill the Big Frog")
+	await create_timer(1.5).timeout
+	_check(world.get_node("Enemies").get_child_count() == 0, "the dead Big Frog goes away")
 
 
 ## The nearest test item or dropped stack of `item`, or null.

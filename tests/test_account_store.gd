@@ -58,6 +58,7 @@ func _init() -> void:
 	_check_world_seed()
 	_check_positions()
 	_check_discoveries()
+	_check_health()
 	_check_legacy_import()
 	_check_race_migration()
 
@@ -113,6 +114,24 @@ func _check_discoveries() -> void:
 	store.close()
 	var reloaded := AccountStore.new(PATH)
 	_check(reloaded.load_discoveries("chris", "Ragnar") == { "stone": true, "wood": true }, "discoveries survive a reload")
+	reloaded.close()
+
+
+## A character's health is saved per character; one that's never been hurt
+## has none saved and starts at full health.
+func _check_health() -> void:
+	_remove_test_files()
+	var store := AccountStore.new(PATH)
+	store.register("chris", "secret1")
+	store.create_character("chris", "Ragnar")
+	store.create_character("chris", "Astrid")
+	_check(store.load_health("chris", "Ragnar") == -1, "a new character has no saved health")
+	_check(store.save_health("chris", "ragnar", 35), "saves health")
+	_check(not store.save_health("nobody", "Ragnar", 10), "rejects an unknown account")
+	_check(store.load_health("chris", "Astrid") == -1, "health is per character")
+	store.close()
+	var reloaded := AccountStore.new(PATH)
+	_check(reloaded.load_health("chris", "Ragnar") == 35, "health survives a reload")
 	reloaded.close()
 
 

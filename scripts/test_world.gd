@@ -18,6 +18,11 @@ extends Node3D
 ## scripts/forage.gd). Trees and big rocks stand in the way and can be chopped
 ## or broken with the right tool for wood and stone (see
 ## scripts/harvestables.gd), which the server drops on the ground here.
+##
+## A Big Frog lives a little way off the spawn for trying out fighting (see
+## scripts/big_frog.gd). The server spawns it and EnemySpawner replicates it;
+## a new one comes back a while after it's killed. Players the frog kills come
+## back at the spawn with full health.
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PICKUP_SCENE := preload("res://scenes/item_pickup.tscn")
@@ -25,6 +30,8 @@ const CHEST_SCENE := preload("res://scenes/chest.tscn")
 const InventoryUI := preload("res://scripts/inventory_ui.gd")
 const Forage := preload("res://scripts/forage.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
+const FROG_SCENE := preload("res://scenes/big_frog.tscn")
+const HUD := preload("res://scripts/hud.gd")
 
 ## How close a player has to be to pick something up or open a chest. The
 ## server allows a bit more, since it sees players slightly later.
@@ -38,6 +45,12 @@ const RESPAWN_SECONDS := 60.0
 ## Where the test chest stands, as an angle and distance from the middle of
 ## the Meadows (players spawn 4 m out).
 const CHEST_SPOT := Vector2(0.0, 7.0)
+## Where the test Big Frog lives, as an angle and distance from the middle of
+## the Meadows: past the test items, so it doesn't come after players picking
+## them up, but in sight of the spawn.
+const FROG_SPOT := Vector2(2.75, 15.0)
+## Seconds before a killed test frog comes back.
+const FROG_RESPAWN_SECONDS := 30.0
 ## Items lying around the spawn: item, count, angle, distance.
 const TEST_ITEMS := [
 	["wood", 5, 0.6, 6.0],
@@ -53,6 +66,7 @@ const TEST_ITEMS := [
 @onready var players: Node3D = $Players
 @onready var terrain: Node3D = $Terrain
 @onready var items: Node3D = $Items
+@onready var enemies: Node3D = $Enemies
 ## The plants to pick, rebuilt with the terrain.
 var forage: Forage
 ## The trees and rocks, rebuilt with the terrain.
@@ -62,6 +76,7 @@ var harvestables: Harvestables
 func _ready() -> void:
 	if not Network.is_dedicated_server():
 		add_child(InventoryUI.new())
+		add_child(HUD.new())
 	Session.world_seed_changed.connect(_build_terrain)
 	if Session.world_seed != "":
 		_build_terrain(Session.world_seed)
@@ -91,6 +106,8 @@ func _build_terrain(seed_text: String) -> void:
 	if multiplayer.is_server() and items.get_child_count() == 0:
 		for spot in TEST_ITEMS:
 			_spawn_pickup(spot)
+	if multiplayer.is_server() and enemies.get_child_count() == 0:
+		_spawn_frog()
 
 
 ## Server side: whether a peer's player is close enough to `point` to use
@@ -198,6 +215,30 @@ func _respawn_later(spot: Array) -> void:
 		_spawn_pickup(spot)
 
 
+## Server side: puts the test Big Frog at its home spot.
+func _spawn_frog() -> void:
+	var frog := FROG_SCENE.instantiate()
+	frog.world = self
+	frog.position = terrain.gen.spawn_point(FROG_SPOT.x, FROG_SPOT.y) + Vector3.UP * 0.5
+	frog.home = frog.position
+	frog.killed.connect(_respawn_frog_later)
+	enemies.add_child(frog, true)
+
+
+func _respawn_frog_later() -> void:
+	await get_tree().create_timer(FROG_RESPAWN_SECONDS).timeout
+	if is_inside_tree() and multiplayer.is_server():
+		_spawn_frog()
+
+
+## Server side: a player died. They come back at the spawn with full health,
+## keeping what they carry.
+func _respawn_player(player: Node3D) -> void:
+	player.velocity = Vector3.ZERO
+	player.position = terrain.gen.spawn_point(randf() * TAU) + Vector3.UP * 1.5
+	player.restore_health()
+
+
 func _add_player(id: int, character_name: String, race: String) -> void:
 	var player := PLAYER_SCENE.instantiate()
 	player.name = str(id)
@@ -216,6 +257,9 @@ func _add_player(id: int, character_name: String, race: String) -> void:
 		# Spread spawns out around the middle of the Meadows so players don't
 		# start inside each other, and drop them onto the ground.
 		player.position = terrain.gen.spawn_point(randf() * TAU) + Vector3.UP * 1.5
+	if Session.saved_health_of(id) > 0:
+		player.health = Session.saved_health_of(id)
+	player.killed.connect(func(_by: String) -> void: _respawn_player(player))
 	players.add_child(player, true)
 	Session.set_player_body(id, player)
 

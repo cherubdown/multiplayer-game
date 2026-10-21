@@ -8,10 +8,12 @@ extends RefCounted
 ##
 ## An item with a "tool" entry can be held in the hand and swung with the left
 ## mouse button. Its "type" says what it's good for (see scripts/harvestables.gd
-## for what each type can break).
+## for what each type can break). A tool with an "attack" in its "tool" entry
+## is a weapon: that's how much health one hit takes off an enemy (see
+## scripts/big_frog.gd).
 
 const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple",
-	"stone_axe", "stone_pickaxe", "stone_sword"]
+	"wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"]
 
 const INFO := {
 	"wood": {
@@ -63,6 +65,14 @@ const INFO := {
 		"color": Color(0.8, 0.12, 0.1),
 		"shape": "apple",
 	},
+	"wood_sword": {
+		"name": "Wood Sword",
+		"description": "A blade whittled from a single length of wood. Hold it and click to fight. Hits for 10.",
+		"max_stack": 1,
+		"color": Color(0.66, 0.46, 0.26),
+		"shape": "tool",
+		"tool": { "type": "sword", "damage": 1, "attack": 10 },
+	},
 	"stone_axe": {
 		"name": "Stone Axe",
 		"description": "A stone head lashed to a wooden haft. Hold it and click to chop down trees for wood.",
@@ -81,11 +91,11 @@ const INFO := {
 	},
 	"stone_sword": {
 		"name": "Stone Sword",
-		"description": "A ground stone blade on a wooden grip. Crude, but it has an edge.",
+		"description": "A ground stone blade on a wooden grip. Crude, but it has an edge. Hits for 15.",
 		"max_stack": 1,
 		"color": Color(0.55, 0.55, 0.58),
 		"shape": "tool",
-		"tool": { "type": "sword", "damage": 2 },
+		"tool": { "type": "sword", "damage": 2, "attack": 15 },
 	},
 }
 
@@ -138,6 +148,14 @@ const ICONS := {
 		<path d="M32 20 C32 14 34 10 37 7" fill="none" stroke="#5a3415" stroke-width="3" stroke-linecap="round"/>
 		<path d="M35 14 C40 8 48 9 50 12 C45 15 40 15 35 14 Z" fill="#4fa548" stroke="#1f4d1c" stroke-width="1.5"/>
 		<path d="M18 28 C19 24 22 22 25 22" fill="none" stroke="#ff9a8a" stroke-width="3" stroke-linecap="round"/>
+	</svg>""",
+	"wood_sword": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M28 34 L52 8 L58 6 L56 12 L30 36 Z" fill="#b07a44" stroke="#4a2c12" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M32 32 L54 9" stroke="#e0b47a" stroke-width="2" stroke-linecap="round"/>
+		<path d="M20 30 L34 44" stroke="#3b220e" stroke-width="7" stroke-linecap="round"/>
+		<path d="M20 30 L34 44" stroke="#7a4a22" stroke-width="4" stroke-linecap="round"/>
+		<path d="M28 40 L12 56" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
+		<path d="M28 40 L12 56" stroke="#9a6430" stroke-width="5" stroke-linecap="round"/>
 	</svg>""",
 	"stone_axe": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
 		<path d="M18 58 L44 12" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
@@ -195,6 +213,16 @@ static func is_tool_item(item: String) -> bool:
 ## How much one swing of the tool does.
 static func tool_damage(item: String) -> int:
 	return INFO[item]["tool"]["damage"] if is_tool_item(item) else 0
+
+
+## How much health one hit with the item takes off an enemy, 0 if it isn't a
+## weapon.
+static func attack_damage(item: String) -> int:
+	return INFO[item]["tool"].get("attack", 0) if is_tool_item(item) else 0
+
+
+static func is_weapon(item: String) -> bool:
+	return attack_damage(item) > 0
 
 
 ## What the item is for, for tooltips.
@@ -285,7 +313,8 @@ static func tool_mesh(item: String) -> Mesh:
 		_:
 			_tool_part(mesh, _box(Vector3(0.05, 0.2, 0.05)), Vector3(0.0, 0.0, 0.0), wood)
 			_tool_part(mesh, _box(Vector3(0.22, 0.04, 0.06)), Vector3(0.0, 0.12, 0.0), wood.darkened(0.3))
-			_tool_part(mesh, _prism(Vector3(0.08, 0.7, 0.02)), Vector3(0.0, 0.49, 0.0), stone)
+			# The blade is the item's own color: stone, or wood for a wood sword.
+			_tool_part(mesh, _prism(Vector3(0.08, 0.7, 0.02)), Vector3(0.0, 0.49, 0.0), color(item))
 	_tool_meshes[item] = mesh
 	return mesh
 
