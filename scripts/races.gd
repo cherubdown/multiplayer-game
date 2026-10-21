@@ -5,8 +5,8 @@ extends RefCounted
 ##
 ## The models are built in code by CharacterModel from the body measurements
 ## below (in meters), so every race and sex has its own shape without any
-## imported assets. Every new character wears the same plain linen t-shirt and
-## brown trousers, and nothing else.
+## imported assets. Every new character wears the same linen tunic with a rope
+## belt, brown trousers and cloth foot wraps, and nothing else.
 
 const DEFAULT := "human"
 const IDS: Array[String] = ["human", "elf", "dwarf", "ogre"]
@@ -27,19 +27,26 @@ const SEX_NAMES := { "male": "Male", "female": "Female" }
 ##   arm       upper arm length (the forearm is a little shorter); arm_r its radius
 ##   leg_r     thigh radius
 ##   hair      style: short, long, ponytail, braids, topknot or bun
+##   stubble   how much beard shadow is painted on the jaw, 0 to 1
+##
+## And for the whole race, the painted face: eye_color (the iris), eye_size
+## (1 for a human), lid (how far the upper lids droop, 0 to 1), brow_tilt (how
+## much the brows slant down toward the nose; above 0 looks fierce) and smile
+## (how much the corners of the mouth turn up, or down below 0).
 const INFO := {
 	"human": {
 		"name": "Human",
 		"description": "Sturdy and adaptable, at home in any land.",
 		"skin": Color(0.89, 0.69, 0.56),
 		"hair_color": Color(0.33, 0.21, 0.12),
+		"eye_color": Color(0.33, 0.45, 0.58),
 		"bodies": {
 			"male": {
 				"leg": 0.88, "torso": 0.55, "neck": 0.07, "neck_r": 0.061, "head": 0.141, "jaw": 1.0,
 				"shoulders": 0.2, "hips": 0.095,
 				"chest": Vector2(0.18, 0.11), "waist": Vector2(0.145, 0.095), "pelvis": Vector2(0.16, 0.105),
 				"belly": 0.0, "bust": 0.0, "arm": 0.3, "arm_r": 0.055, "leg_r": 0.083,
-				"hair": "short",
+				"hair": "short", "stubble": 0.45,
 			},
 			"female": {
 				"leg": 0.84, "torso": 0.5, "neck": 0.075, "neck_r": 0.052, "head": 0.133, "jaw": 0.92,
@@ -55,6 +62,8 @@ const INFO := {
 		"description": "Tall, swift and keen-eyed children of the old forests.",
 		"skin": Color(0.96, 0.85, 0.76),
 		"hair_color": Color(0.93, 0.85, 0.6),
+		"eye_color": Color(0.3, 0.6, 0.38),
+		"eye_size": 1.1, "brow_tilt": -0.12, "smile": 0.15,
 		"ears": true,
 		"bodies": {
 			"male": {
@@ -78,6 +87,8 @@ const INFO := {
 		"description": "Short, broad and stubborn as the mountains they mine.",
 		"skin": Color(0.87, 0.63, 0.5),
 		"hair_color": Color(0.55, 0.24, 0.1),
+		"eye_color": Color(0.45, 0.33, 0.18),
+		"eye_size": 0.95, "lid": 0.25, "brow_tilt": 0.12, "smile": 0.0,
 		"bodies": {
 			"male": {
 				"leg": 0.5, "torso": 0.5, "neck": 0.04, "neck_r": 0.077, "head": 0.153, "jaw": 1.1,
@@ -100,6 +111,8 @@ const INFO := {
 		"description": "Huge, tusked and terribly strong, if not terribly patient.",
 		"skin": Color(0.56, 0.64, 0.4),
 		"hair_color": Color(0.12, 0.1, 0.09),
+		"eye_color": Color(0.85, 0.65, 0.15),
+		"eye_size": 0.85, "lid": 0.4, "brow_tilt": 0.4, "smile": -0.5,
 		"tusks": true,
 		"bodies": {
 			"male": {
@@ -107,7 +120,7 @@ const INFO := {
 				"shoulders": 0.38, "hips": 0.17,
 				"chest": Vector2(0.36, 0.24), "waist": Vector2(0.34, 0.26), "pelvis": Vector2(0.32, 0.22),
 				"belly": 0.12, "bust": 0.0, "arm": 0.5, "arm_r": 0.115, "leg_r": 0.154,
-				"hair": "topknot",
+				"hair": "topknot", "stubble": 0.35,
 			},
 			"female": {
 				"leg": 0.95, "torso": 0.8, "neck": 0.06, "neck_r": 0.11, "head": 0.169, "jaw": 1.18,
