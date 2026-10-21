@@ -80,7 +80,7 @@ After you host or join, you log in to that server. The first time, type a userna
 
 Every character is a **Human**, an **Elf**, a **Dwarf** or an **Ogre**, and **Male** or **Female**. Pick both with the buttons above the name box before pressing **Create**; the preview shows that model, and selecting a character in the list shows theirs. Race and sex are saved with the character and can't be changed later. Characters made before races existed are humans, and characters made before sexes could be picked are male.
 
-New characters start with nothing: an empty inventory, wearing only a plain t-shirt and trousers, barefoot.
+New characters start with nothing: an empty inventory, wearing only a linen tunic with a rope belt, trousers and cloth foot wraps.
 
 The character models are built in code (`scripts/character_model.gd`) from each race and sex's body measurements in `scripts/races.gd`, so there are no model files to import. Humans are average in every way; elves are tall and slender with long pointed ears; dwarves are short and broad, the men with a braided beard and the women with braids; ogres are huge, green-skinned and tusked. Tweak a number in `races.gd` to reshape a race. The idle, walk, run, jump and cheer animations are keyframed on the model's joints in the same script.
 

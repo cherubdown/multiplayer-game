@@ -286,7 +286,7 @@ func _on_new_character_changed() -> void:
 
 
 ## Previews the race and sex picked for the next new character. Everyone
-## starts out the same way, with nothing but a t-shirt and trousers.
+## starts out the same way, with nothing but a tunic, trousers and foot wraps.
 func _show_new_character() -> void:
 	_preview.show_character(_new_race, _new_sex)
 	_race_info.text = "%s: %s" % [Races.describe(_new_race, _new_sex), Races.INFO[_new_race]["description"]]

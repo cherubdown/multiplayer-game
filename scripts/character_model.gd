@@ -5,8 +5,13 @@ extends Node3D
 ##
 ## The model is built in code from the race's body measurements (see
 ## scripts/races.gd): a jointed body of lofted meshes for the torso, head and
-## limbs, a face, hair, and the t-shirt and trousers every character starts
-## in. The animations are keyframed on those joints here too.
+## limbs, a face, hair, and the tunic, trousers and foot wraps every character
+## starts in. The animations are keyframed on those joints here too.
+##
+## The look is old-school MMO: chunky low-poly shapes with exaggerated
+## shoulders, hands, feet and noses so they read at a distance, and the detail
+## hand painted on top by shaders/hand_painted.gdshader (cloth weave and folds,
+## hair strands, painted light and shade, and the whole face).
 ##
 ## Models are only built where something can see them. Dedicated and headless
 ## servers skip them.
@@ -26,12 +31,24 @@ const BLEND := 0.2
 
 ## The head is about this many times its half-width tall.
 const HEAD_HEIGHT := 2.2
-const SEGMENTS := 16
+## Sides around limbs, and around the torso and head. Few on purpose.
+const SEGMENTS := 8
+const BODY_SEGMENTS := 10
+## How much bigger than life hands and feet are, for the chunky look.
+const HAND_SCALE := 1.4
+const FOOT_SCALE := 1.35
 
-const SHIRT_COLOR := Color(0.86, 0.82, 0.71)
+const PAINTED_SHADER := preload("res://shaders/hand_painted.gdshader")
+## The patterns the shader paints (see shaders/hand_painted.gdshader).
+enum { SKIN, LINEN, WOOL, LEATHER, HAIR, METAL, ROPE }
+
+const SHIRT_COLOR := Color(0.8, 0.74, 0.6)
+const TRIM_COLOR := Color(0.5, 0.2, 0.15)
 const PANTS_COLOR := Color(0.36, 0.27, 0.19)
-const EYE_COLOR := Color(0.09, 0.07, 0.06)
-const MOUTH_COLOR := Color(0.47, 0.22, 0.2)
+const WRAP_COLOR := Color(0.62, 0.56, 0.46)
+const ROPE_COLOR := Color(0.66, 0.55, 0.36)
+const SOLE_COLOR := Color(0.3, 0.21, 0.14)
+const LIP_COLOR := Color(0.62, 0.3, 0.27)
 const TUSK_COLOR := Color(0.94, 0.9, 0.78)
 const GOLD_COLOR := Color(0.95, 0.72, 0.2)
 
@@ -168,9 +185,10 @@ func _play(anim_name: String, speed: float) -> void:
 func _build_body() -> void:
 	var b := _body
 	var info: Dictionary = Races.INFO[race]
-	var skin := _material(info["skin"])
-	var shirt := _material(SHIRT_COLOR)
-	var pants := _material(PANTS_COLOR)
+	var skin := _skin_material()
+	var shirt := _paint(LINEN, SHIRT_COLOR)
+	var trim := _paint(LINEN, TRIM_COLOR)
+	var pants := _paint(WOOL, PANTS_COLOR)
 	var torso: float = b["torso"]
 	var chest: Vector2 = b["chest"]
 	var waist: Vector2 = b["waist"]
@@ -180,7 +198,7 @@ func _build_body() -> void:
 	var leg_r: float = b["leg_r"]
 	var arm_r: float = b["arm_r"]
 
-	# Trousers from the crotch up to just under the shirt's hem.
+	# Trousers from the crotch up to just under the tunic.
 	var hips := _joint("Hips", null, Vector3(0.0, b["leg"], 0.0))
 	var top := pelvis.lerp(waist, 0.6)
 	_add(hips, _loft([
@@ -190,12 +208,34 @@ func _build_body() -> void:
 		[torso * 0.24, top.x, top.y + belly * 0.4, top.y],
 	]), pants)
 
-	# The rest of the torso bends at the waist, inside the shirt.
+	# The tunic's skirt flares over the top of the legs, with a dyed hem. It
+	# hangs from the hips so it stays put when the body leans.
+	var flare := pelvis * 1.28
+	var belt_y := torso * 0.2
+	var skirt := [
+		[-leg_r * 0.85, flare.x, flare.y + belly * 0.3, flare.y],
+		[-leg_r * 0.2, pelvis.x * 1.2, pelvis.y * 1.18 + belly * 0.3, pelvis.y * 1.18],
+		[belt_y + 0.01, top.x * 1.06, top.y * 1.06 + belly * 0.45, top.y * 1.06],
+	]
+	_add(hips, _loft(skirt, true, true, BODY_SEGMENTS), shirt)
+	_add(hips, _band(-leg_r * 0.85, -leg_r * 0.68, flare * 1.03, belly * 0.3), trim)
+	# A rope belt knotted at the side, its ends hanging.
+	var belt := top * 1.12
+	_add(hips, _band(belt_y - 0.016, belt_y + 0.016, belt, belly * 0.45), _paint(ROPE, ROPE_COLOR, Vector3.RIGHT))
+	var rope := _paint(ROPE, ROPE_COLOR)
+	var knot := Vector3(belt.x * 0.55, belt_y, -(belt.y + belly * 0.45) * 0.93)
+	_add(hips, _ellipsoid(Vector3(0.03, 0.026, 0.024)), rope, knot)
+	for end in [-1.0, 1.0]:
+		_add(hips, _loft([[0.0, 0.011, 0.011, 0.011], [-torso * 0.2, 0.009, 0.009, 0.009]], true, true, 5), rope,
+			knot + Vector3(0.012 * end, 0.0, -0.008), Vector3(deg_to_rad(-6.0), 0.0, deg_to_rad(6.0 * end + 4.0)))
+
+	# The rest of the torso bends at the waist, inside the tunic.
 	var spine_y := torso * 0.2
 	var spine := _joint("Spine", "Hips", Vector3(0.0, spine_y, 0.0))
 	var hem := pelvis.lerp(waist, 0.45) * 1.07
 	var mid := waist.lerp(chest, 0.6)
 	var shoulder_x: float = b["shoulders"] + arm_r * 0.45
+	var neckline := Vector2(maxf(b["neck_r"] * 1.6, shoulder_x * 0.5), b["neck_r"] * 1.45)
 	_add(spine, _loft([
 		[torso * 0.13 - spine_y, hem.x, hem.y + belly * 0.45, hem.y],
 		[torso * 0.36 - spine_y, waist.x, waist.y + belly, waist.y],
@@ -203,41 +243,51 @@ func _build_body() -> void:
 		[torso * 0.72 - spine_y, chest.x, chest.y + bust, chest.y],
 		[torso * 0.86 - spine_y, chest.x, chest.y * 0.95 + bust * 0.35, chest.y * 0.95],
 		[torso * 0.95 - spine_y, shoulder_x, chest.y * 0.72, chest.y * 0.75],
-		[torso * 1.02 - spine_y, maxf(b["neck_r"] * 1.6, shoulder_x * 0.5), b["neck_r"] * 1.4, b["neck_r"] * 1.5],
-	]), shirt)
+		[torso * 1.02 - spine_y, neckline.x, neckline.y, b["neck_r"] * 1.5],
+	], true, true, BODY_SEGMENTS), shirt)
+	# A dyed collar.
+	_add(spine, _loft([
+		[torso * 0.975 - spine_y, neckline.x * 1.12, neckline.y * 1.12, neckline.y * 1.1],
+		[torso * 1.035 - spine_y, neckline.x * 0.98, neckline.y * 1.0, neckline.y * 1.0],
+	], true, true, BODY_SEGMENTS), trim)
 
 	var neck := _joint("Neck", "Spine", Vector3(0.0, torso * 0.97 - spine_y, 0.0))
 	var neck_r: float = b["neck_r"]
 	_add(neck, _loft([[-b["neck"] * 0.6, neck_r, neck_r, neck_r], [b["neck"] + b["head"] * 0.5, neck_r * 0.92, neck_r * 0.92, neck_r * 0.92]]), skin)
 	var head := _joint("Head", "Neck", Vector3(0.0, b["neck"], 0.0))
-	_build_head(head, skin, _material(info["hair_color"]))
+	_build_head(head, skin, _paint(HAIR, info["hair_color"]))
 
 	for side in ["L", "R"]:
 		var s := -1.0 if side == "L" else 1.0
-		_build_arm(side, s, spine, Vector3(b["shoulders"] * s, torso * 0.9 - spine_y, 0.0), skin, shirt)
+		_build_arm(side, s, spine, Vector3(b["shoulders"] * s, torso * 0.9 - spine_y, 0.0), skin, shirt, trim)
 		_build_leg(side, s, skin, pants)
 
 
-func _build_arm(side: String, s: float, spine: Node3D, at: Vector3, skin: Material, shirt: Material) -> void:
+func _build_arm(side: String, s: float, spine: Node3D, at: Vector3, skin: Material, shirt: Material, trim: Material) -> void:
 	var b := _body
 	var arm: float = b["arm"]
 	var forearm := arm * 0.9
 	var r: float = b["arm_r"]
-	# Hang the arms out just far enough to clear the hips.
-	var clearance: float = b["pelvis"].x + r * 1.3 - b["shoulders"]
+	# Hang the arms out just far enough to clear the hips and the tunic.
+	var clearance: float = b["pelvis"].x * 1.28 + r * 1.3 - b["shoulders"]
 	var out := maxf(atan2(clearance, arm + forearm), deg_to_rad(3.0))
 	var upper := _joint("ArmUpper_" + side, "Spine", at, Vector3(0.0, 0.0, out * s))
-	_add(upper, _ellipsoid(Vector3.ONE * r * 1.25), shirt)
-	_add(upper, _loft([[0.0, r * 1.2, r * 1.2, r * 1.2], [-arm * 0.42, r * 1.16, r * 1.16, r * 1.16]]), shirt)
-	_add(upper, _loft([[0.0, r, r, r], [-arm, r * 0.82, r * 0.82, r * 0.82]]), skin)
+	# Big rounded shoulders and short, wide sleeves with a dyed cuff.
+	_add(upper, _ellipsoid(Vector3(r * 1.45, r * 1.35, r * 1.4)), shirt, Vector3(0.0, -r * 0.1, 0.0))
+	_add(upper, _loft([[0.0, r * 1.3, r * 1.3, r * 1.3], [-arm * 0.45, r * 1.32, r * 1.32, r * 1.32]]), shirt)
+	_add(upper, _band(-arm * 0.47, -arm * 0.39, Vector2(r, r) * 1.38, 0.0), trim)
+	_add(upper, _loft([[0.0, r, r, r], [-arm, r * 0.88, r * 0.88, r * 0.88]]), skin)
 
 	var lower := _joint("ArmLower_" + side, "ArmUpper_" + side, Vector3(0.0, -arm, 0.0), Vector3(deg_to_rad(8.0), 0.0, 0.0))
-	_add(lower, _ellipsoid(Vector3.ONE * r * 0.84), skin)
-	_add(lower, _loft([[0.0, r * 0.82, r * 0.82, r * 0.82], [-forearm, r * 0.6, r * 0.6, r * 0.6]]), skin)
+	_add(lower, _ellipsoid(Vector3.ONE * r * 0.9), skin)
+	# Chunky forearms, thicker toward the wrist, the way old models drew them.
+	_add(lower, _loft([[0.0, r * 0.88, r * 0.88, r * 0.88], [-forearm * 0.45, r * 0.92, r * 0.85, r * 0.85], [-forearm, r * 0.72, r * 0.7, r * 0.7]]), skin)
 
+	# Big, blocky hands read at a distance.
 	var hand := _joint("Hand_" + side, "ArmLower_" + side, Vector3(0.0, -forearm, 0.0))
-	_add(hand, _ellipsoid(Vector3(r * 0.48, r * 1.15, r * 0.85)), skin, Vector3(0.0, -r * 0.95, 0.0))
-	_add(hand, _ellipsoid(Vector3(r * 0.28, r * 0.5, r * 0.28)), skin, Vector3(-s * r * 0.15, -r * 0.55, -r * 0.7), Vector3(deg_to_rad(-30.0), 0.0, 0.0))
+	var h := r * HAND_SCALE
+	_add(hand, _ellipsoid(Vector3(h * 0.5, h * 1.1, h * 0.85)), skin, Vector3(0.0, -h * 0.85, 0.0))
+	_add(hand, _ellipsoid(Vector3(h * 0.28, h * 0.5, h * 0.3)), skin, Vector3(-s * h * 0.15, -h * 0.5, -h * 0.7), Vector3(deg_to_rad(-30.0), 0.0, 0.0))
 
 
 func _build_leg(side: String, s: float, skin: Material, pants: Material) -> void:
@@ -246,22 +296,28 @@ func _build_leg(side: String, s: float, skin: Material, pants: Material) -> void
 	var ankle := maxf(b["leg"] * 0.06, r * 0.6)
 	var thigh: float = (b["leg"] - ankle) * 0.5
 	var shin := thigh
+	var wraps := _paint(LINEN, WRAP_COLOR, Vector3.RIGHT)
 
 	var upper := _joint("Leg_" + side, "Hips", Vector3(b["hips"] * s, 0.0, 0.0))
-	_add(upper, _loft([[r * 0.6, r * 0.95, r * 0.95, r * 0.95], [-thigh, r * 0.72, r * 0.72, r * 0.72]]), pants)
+	_add(upper, _loft([[r * 0.6, r * 0.95, r * 0.95, r * 0.95], [-thigh, r * 0.76, r * 0.76, r * 0.76]]), pants)
 
 	var lower := _joint("Shin_" + side, "Leg_" + side, Vector3(0.0, -thigh, 0.0))
-	_add(lower, _ellipsoid(Vector3.ONE * r * 0.74), pants)
+	_add(lower, _ellipsoid(Vector3.ONE * r * 0.78), pants)
+	_add(lower, _loft([[0.0, r * 0.76, r * 0.76, r * 0.76], [-shin * 0.5, r * 0.68, r * 0.68, r * 0.68]]), pants)
+	# Cloth wraps bound around the shin, wider toward the ankle.
 	_add(lower, _loft([
-		[0.0, r * 0.72, r * 0.72, r * 0.72],
-		[-shin * 0.86, r * 0.62, r * 0.62, r * 0.62],
-		[-shin * 0.93, r * 0.68, r * 0.68, r * 0.68],
-	], true, false), pants)
-	_add(lower, _loft([[-shin * 0.8, r * 0.42, r * 0.42, r * 0.42], [-shin - ankle * 0.3, r * 0.4, r * 0.4, r * 0.4]]), skin)
+		[-shin * 0.42, r * 0.66, r * 0.68, r * 0.66],
+		[-shin * 0.75, r * 0.6, r * 0.62, r * 0.6],
+		[-shin - ankle * 0.4, r * 0.66, r * 0.7, r * 0.66],
+	]), wraps)
+	for k in 3:
+		_add(lower, _band(-shin * (0.48 + k * 0.17) - 0.007, -shin * (0.48 + k * 0.17) + 0.007, Vector2(r * 0.68, r * 0.7), 0.0), _paint(LEATHER, SOLE_COLOR))
 
-	# Bare feet.
+	# Big wrapped feet.
 	var foot := _joint("Foot_" + side, "Shin_" + side, Vector3(0.0, -shin, 0.0))
-	_add(foot, _ellipsoid(Vector3(r * 0.52, ankle * 0.55, r * 1.25)), skin, Vector3(0.0, -ankle * 0.48, -r * 0.55))
+	var f := r * FOOT_SCALE
+	_add(foot, _ellipsoid(Vector3(f * 0.55, ankle * 0.6, f * 1.2)), wraps, Vector3(0.0, -ankle * 0.45, -f * 0.5))
+	_add(foot, _ellipsoid(Vector3(f * 0.5, ankle * 0.3, f * 1.15)), _paint(LEATHER, SOLE_COLOR), Vector3(0.0, -ankle * 0.85, -f * 0.5))
 
 
 func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
@@ -269,47 +325,46 @@ func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
 	var j: float = _body["jaw"]
 	var info: Dictionary = Races.INFO[race]
 	var rings := []
+	# A squarer jaw and cheekbones than a real skull, for a strong silhouette.
 	for ring in [
-		[-0.1, 0.45 * j, 0.5, 0.45], [0.2, 0.75 * j, 0.82, 0.78], [0.55, 0.92 * lerpf(1.0, j, 0.5), 0.95, 0.95],
-		[0.95, 1.0, 0.98, 1.0], [1.35, 0.98, 0.95, 1.0], [1.7, 0.85, 0.8, 0.86], [2.0, 0.55, 0.5, 0.56],
+		[-0.1, 0.5 * j, 0.55, 0.45], [0.2, 0.8 * j, 0.86, 0.78], [0.55, 0.95 * lerpf(1.0, j, 0.5), 0.98, 0.95],
+		[0.95, 1.02, 1.0, 1.0], [1.35, 0.98, 0.95, 1.0], [1.7, 0.85, 0.8, 0.86], [2.0, 0.55, 0.5, 0.56],
 		[2.18, 0.15, 0.14, 0.15],
 	]:
 		rings.append(ring.map(func(v: float) -> float: return v * r))
-	_add(head, _loft(rings), skin)
+	# The eyes, brows, mouth and cheeks are painted on the face.
+	_add(head, _loft(rings, true, true, BODY_SEGMENTS), _face_material(r, j))
 
 	var ogre: bool = info.get("tusks", false)
-	var dark := _material(EYE_COLOR)
-	# Eyes, brows, nose and mouth on the front (-Z).
-	for s in [-1.0, 1.0]:
-		var eye := 0.09 if ogre else 0.11
-		_add(head, _ellipsoid(Vector3(eye, eye * 1.25, eye * 0.6) * r), dark, Vector3(0.36 * s, 1.05, -0.9) * r)
-		if not ogre:
-			_add(head, _box(Vector3(0.34, 0.07, 0.08) * r), hair, Vector3(0.36 * s, 1.32, -0.9) * r, Vector3(0.0, 0.0, deg_to_rad(-8.0 * s)))
 	if ogre:
-		# A heavy brow ridge, a flat broad nose and tusks.
-		_add(head, _ellipsoid(Vector3(0.85, 0.16, 0.2) * r), skin, Vector3(0.0, 1.3, -0.84) * r)
-		_add(head, _ellipsoid(Vector3(0.24, 0.17, 0.2) * r), skin, Vector3(0.0, 0.8, -0.98) * r)
-		var tusk := _material(TUSK_COLOR)
+		# A heavy brow ridge scowling down to the nose, a flat broad nose and
+		# tusks.
+		for s in [-1.0, 1.0]:
+			_add(head, _ellipsoid(Vector3(0.46, 0.15, 0.22) * r), skin, Vector3(0.36 * s, 1.3, -0.86) * r, Vector3(0.0, 0.0, deg_to_rad(16.0 * s)))
+		_add(head, _ellipsoid(Vector3(0.28, 0.19, 0.22) * r), skin, Vector3(0.0, 0.8, -0.98) * r)
+		var tusk := _paint(SKIN, TUSK_COLOR)
 		for s in [-1.0, 1.0]:
 			var cone := CylinderMesh.new()
 			cone.top_radius = 0.0
-			cone.bottom_radius = 0.07 * r
-			cone.height = 0.36 * r
-			cone.radial_segments = 8
-			_add(head, cone, tusk, Vector3(0.34 * j * s, 0.62, -0.86) * r, Vector3(deg_to_rad(-12.0), 0.0, deg_to_rad(-12.0 * s)))
+			cone.bottom_radius = 0.08 * r
+			cone.height = 0.42 * r
+			cone.radial_segments = 6
+			cone.rings = 1
+			_add(head, cone, tusk, Vector3(0.34 * j * s, 0.64, -0.86) * r, Vector3(deg_to_rad(-12.0), 0.0, deg_to_rad(-12.0 * s)))
 	else:
-		_add(head, _ellipsoid(Vector3(0.11, 0.14, 0.14) * r), skin, Vector3(0.0, 0.8, -0.97) * r)
-	_add(head, _box(Vector3(0.32 * j, 0.045, 0.05) * r), _material(MOUTH_COLOR), Vector3(0.0, 0.47, -0.86) * r)
+		# A big, wedge-shaped nose.
+		var nose := 1.2 if race == "dwarf" else 1.0
+		_add(head, _ellipsoid(Vector3(0.13, 0.19, 0.16) * r * nose), skin, Vector3(0.0, 0.8, -0.98) * r, Vector3(deg_to_rad(-12.0), 0.0, 0.0))
 
 	# Ears.
 	for s in [-1.0, 1.0]:
 		if info.get("ears", false):
 			# Long, swept-back points.
 			var point := PrismMesh.new()
-			point.size = Vector3(0.36, 1.05, 0.1) * r
-			_add(head, point, skin, Vector3(1.05 * s, 1.25, 0.12) * r, Vector3(deg_to_rad(-28.0), 0.0, deg_to_rad(-52.0 * s)))
+			point.size = Vector3(0.4, 1.35, 0.12) * r
+			_add(head, point, skin, Vector3(1.08 * s, 1.3, 0.15) * r, Vector3(deg_to_rad(-28.0), 0.0, deg_to_rad(-55.0 * s)))
 		else:
-			var ear := 0.3 if ogre else 0.24
+			var ear := 0.32 if ogre else 0.26
 			_add(head, _ellipsoid(Vector3(0.5, 1.0, 0.75) * ear * r), skin, Vector3(1.04 * s, 0.92, 0.0) * r)
 
 	_build_hair(head, r, hair)
@@ -319,47 +374,52 @@ func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
 
 func _build_hair(head: Node3D, r: float, hair: Material) -> void:
 	var style: String = _body["hair"]
+	var tie := _paint(LEATHER, PANTS_COLOR)
 	if style == "topknot":
 		# Bald but for a knot on the crown.
-		_add(head, _ellipsoid(Vector3(0.26, 0.3, 0.26) * r), hair, Vector3(0.0, 2.25, 0.25) * r)
-		_add(head, _ellipsoid(Vector3(0.3, 0.08, 0.3) * r), _material(PANTS_COLOR), Vector3(0.0, 2.08, 0.22) * r)
+		_add(head, _ellipsoid(Vector3(0.28, 0.32, 0.28) * r), hair, Vector3(0.0, 2.27, 0.25) * r)
+		_add(head, _ellipsoid(Vector3(0.32, 0.09, 0.32) * r), tie, Vector3(0.0, 2.08, 0.22) * r)
 		return
 	# A cap over the crown, tipped back so the hairline clears the brows, and
 	# the back of the head down to the nape.
-	var cap := SphereMesh.new()
-	cap.radius = 1.07 * r
-	cap.height = 1.07 * r
-	cap.is_hemisphere = true
-	_add(head, cap, hair, Vector3(0.0, 1.15, 0.05) * r, Vector3(deg_to_rad(22.0), 0.0, 0.0))
-	_add(head, _ellipsoid(Vector3(0.93, 0.95, 0.9) * r), hair, Vector3(0.0, 1.05, 0.22) * r)
+	var dome := []
+	for k in 4:
+		var angle := PI * 0.5 * k / 3.0
+		dome.append([sin(angle) * 1.1 * r, maxf(cos(angle), 0.15) * 1.1 * r, cos(angle) * 1.1 * r, cos(angle) * 1.1 * r])
+	_add(head, _loft(dome, true, true, BODY_SEGMENTS), hair, Vector3(0.0, 1.15, 0.05) * r, Vector3(deg_to_rad(22.0), 0.0, 0.0))
+	_add(head, _ellipsoid(Vector3(0.95, 0.97, 0.92) * r), hair, Vector3(0.0, 1.05, 0.22) * r)
 	match style:
+		"short":
+			# A tousled fringe.
+			_add(head, _ellipsoid(Vector3(0.75, 0.18, 0.3) * r), hair, Vector3(0.1, 1.62, -0.78) * r, Vector3(deg_to_rad(-25.0), 0.0, deg_to_rad(-6.0)))
 		"long":
-			_add(head, _ellipsoid(Vector3(0.88, 1.25, 0.34) * r), hair, Vector3(0.0, 0.35, 0.72) * r, Vector3(deg_to_rad(8.0), 0.0, 0.0))
+			_add(head, _ellipsoid(Vector3(0.92, 1.3, 0.36) * r), hair, Vector3(0.0, 0.3, 0.72) * r, Vector3(deg_to_rad(8.0), 0.0, 0.0))
 			for s in [-1.0, 1.0]:
-				_add(head, _ellipsoid(Vector3(0.2, 0.75, 0.38) * r), hair, Vector3(0.86 * s, 0.6, 0.15) * r, Vector3(0.0, 0.0, deg_to_rad(4.0 * s)))
+				_add(head, _ellipsoid(Vector3(0.22, 0.8, 0.4) * r), hair, Vector3(0.88 * s, 0.55, 0.15) * r, Vector3(0.0, 0.0, deg_to_rad(4.0 * s)))
 		"ponytail":
-			_add(head, _ellipsoid(Vector3(0.16, 0.12, 0.16) * r), _material(PANTS_COLOR), Vector3(0.0, 1.15, 1.08) * r)
-			_add(head, _ellipsoid(Vector3(0.22, 0.75, 0.2) * r), hair, Vector3(0.0, 0.45, 1.15) * r, Vector3(deg_to_rad(14.0), 0.0, 0.0))
+			_add(head, _ellipsoid(Vector3(0.17, 0.13, 0.17) * r), tie, Vector3(0.0, 1.15, 1.08) * r)
+			_add(head, _ellipsoid(Vector3(0.24, 0.85, 0.22) * r), hair, Vector3(0.0, 0.4, 1.17) * r, Vector3(deg_to_rad(14.0), 0.0, 0.0))
 		"bun":
-			_add(head, _ellipsoid(Vector3(0.45, 0.42, 0.42) * r), hair, Vector3(0.0, 1.75, 0.85) * r)
+			_add(head, _ellipsoid(Vector3(0.48, 0.45, 0.45) * r), hair, Vector3(0.0, 1.75, 0.85) * r)
 		"braids":
-			var gold := _material(GOLD_COLOR)
+			var gold := _paint(METAL, GOLD_COLOR)
 			for s in [-1.0, 1.0]:
-				_add(head, _loft([[0.0, 0.16 * r, 0.16 * r, 0.16 * r], [-1.5 * r, 0.11 * r, 0.11 * r, 0.11 * r]]), hair, Vector3(0.82 * s, 0.85, -0.05) * r, Vector3(deg_to_rad(12.0), 0.0, deg_to_rad(6.0 * s)))
-				_add(head, _ellipsoid(Vector3(0.15, 0.06, 0.15) * r), gold, Vector3(0.95 * s, -0.45, -0.32) * r)
+				_add(head, _loft([[0.0, 0.18 * r, 0.18 * r, 0.18 * r], [-1.5 * r, 0.12 * r, 0.12 * r, 0.12 * r]], true, true, 6), hair, Vector3(0.82 * s, 0.85, -0.05) * r, Vector3(deg_to_rad(12.0), 0.0, deg_to_rad(6.0 * s)))
+				_add(head, _ellipsoid(Vector3(0.17, 0.07, 0.17) * r), gold, Vector3(0.95 * s, -0.45, -0.32) * r)
 
 
 ## A broad beard hiding the mouth, a moustache, and a forked, braided end with
 ## gold rings.
 func _build_beard(head: Node3D, r: float, hair: Material) -> void:
-	_add(head, _ellipsoid(Vector3(0.82, 0.6, 0.5) * r), hair, Vector3(0.0, 0.32, -0.55) * r)
+	_add(head, _ellipsoid(Vector3(0.86, 0.62, 0.52) * r), hair, Vector3(0.0, 0.32, -0.55) * r)
 	var wedge := PrismMesh.new()
-	wedge.size = Vector3(1.3, 1.2, 0.45) * r
-	_add(head, wedge, hair, Vector3(0.0, -0.35, -0.72) * r, Vector3(deg_to_rad(-10.0), 0.0, PI))
+	wedge.size = Vector3(1.4, 1.3, 0.5) * r
+	_add(head, wedge, hair, Vector3(0.0, -0.38, -0.72) * r, Vector3(deg_to_rad(-10.0), 0.0, PI))
+	var gold := _paint(METAL, GOLD_COLOR)
 	for s in [-1.0, 1.0]:
-		_add(head, _ellipsoid(Vector3(0.32, 0.1, 0.13) * r), hair, Vector3(0.22 * s, 0.6, -0.93) * r, Vector3(0.0, 0.0, deg_to_rad(-15.0 * s)))
-		_add(head, _loft([[0.0, 0.11 * r, 0.11 * r, 0.11 * r], [-0.55 * r, 0.08 * r, 0.08 * r, 0.08 * r]]), hair, Vector3(0.2 * s, -0.75, -0.8) * r, Vector3(deg_to_rad(-12.0), 0.0, deg_to_rad(6.0 * s)))
-		_add(head, _ellipsoid(Vector3(0.13, 0.06, 0.13) * r), _material(GOLD_COLOR), Vector3(0.23 * s, -1.05, -0.86) * r)
+		_add(head, _ellipsoid(Vector3(0.36, 0.11, 0.14) * r), hair, Vector3(0.22 * s, 0.6, -0.95) * r, Vector3(0.0, 0.0, deg_to_rad(-18.0 * s)))
+		_add(head, _loft([[0.0, 0.12 * r, 0.12 * r, 0.12 * r], [-0.6 * r, 0.09 * r, 0.09 * r, 0.09 * r]], true, true, 6), hair, Vector3(0.2 * s, -0.78, -0.8) * r, Vector3(deg_to_rad(-12.0), 0.0, deg_to_rad(6.0 * s)))
+		_add(head, _ellipsoid(Vector3(0.15, 0.07, 0.15) * r), gold, Vector3(0.23 * s, -1.1, -0.87) * r)
 
 
 # --- Animations -------------------------------------------------------------
@@ -522,8 +582,8 @@ func _add(parent: Node3D, mesh: Mesh, material: Material, position := Vector3.ZE
 
 
 ## A closed (or open-ended) tube through rings of [y, half width, half depth in
-## front, half depth behind], with smooth normals.
-func _loft(rings: Array, cap_bottom := true, cap_top := true) -> ArrayMesh:
+## front, half depth behind], with smooth normals, `segments` sides around.
+func _loft(rings: Array, cap_bottom := true, cap_top := true, segments := SEGMENTS) -> ArrayMesh:
 	if rings[-1][0] < rings[0][0]:
 		# Limbs list their rings downwards; the winding below needs them upwards.
 		rings = rings.duplicate()
@@ -533,10 +593,12 @@ func _loft(rings: Array, cap_bottom := true, cap_top := true) -> ArrayMesh:
 		cap_top = swap
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := SEGMENTS
+	var n := segments
 	for ring in rings:
 		for i in n:
-			var angle := TAU * i / n
+			# Half a step round, so there's a flat face at the front rather
+			# than an edge, for the face to be painted on.
+			var angle := TAU * (i + 0.5) / n
 			var s := sin(angle)
 			# Front is -Z.
 			var depth: float = ring[2] if s < 0.0 else ring[3]
@@ -571,27 +633,62 @@ func _loft(rings: Array, cap_bottom := true, cap_top := true) -> ArrayMesh:
 	return st.commit()
 
 
-## An ellipsoid with these half-sizes, centered on the origin.
+## A chunky ellipsoid with these half-sizes, centered on the origin.
 func _ellipsoid(radii: Vector3) -> ArrayMesh:
 	var rings := []
-	for k in 9:
-		var angle := PI * k / 8.0
+	for k in 7:
+		var angle := PI * k / 6.0
 		# Not quite zero at the poles, so every triangle has an area.
 		var across := maxf(sin(angle), 0.001)
 		rings.append([-radii.y * cos(angle), radii.x * across, radii.z * across, radii.z * across])
 	return _loft(rings, false, false)
 
 
-func _box(size: Vector3) -> BoxMesh:
-	var box := BoxMesh.new()
-	box.size = size
-	return box
+## A band around the body from y0 to y1, like a hem, belt or collar, size
+## half the width and depth; `belly` pushes its front out.
+func _band(y0: float, y1: float, size: Vector2, belly: float) -> ArrayMesh:
+	var ring := [size.x, size.y + belly, size.y]
+	return _loft([[y0] + ring, [y1] + ring], true, true, BODY_SEGMENTS)
 
 
-static func _material(color: Color) -> StandardMaterial3D:
-	if not _materials.has(color):
-		var material := StandardMaterial3D.new()
-		material.albedo_color = color
-		material.roughness = 0.85
-		_materials[color] = material
-	return _materials[color]
+## The shared hand-painted material for a pattern in a color. The shade and
+## light are painted in hue-shifted, the way an illustrator would: shadows
+## cooler and richer, lights warmer.
+static func _paint(pattern: int, color: Color, grain := Vector3.UP) -> ShaderMaterial:
+	var key := "%d %s %s" % [pattern, color, grain]
+	if not _materials.has(key):
+		var material := ShaderMaterial.new()
+		material.shader = PAINTED_SHADER
+		var shadow := Color(0.42, 0.14, 0.16) if pattern == SKIN else Color(0.16, 0.13, 0.26)
+		material.set_shader_parameter("pattern", pattern)
+		material.set_shader_parameter("base_color", color)
+		material.set_shader_parameter("shade_color", color.darkened(0.5).lerp(shadow, 0.3))
+		material.set_shader_parameter("light_color", color.lightened(0.35).lerp(Color(1.0, 0.94, 0.75), 0.25))
+		material.set_shader_parameter("grain", grain)
+		_materials[key] = material
+	return _materials[key]
+
+
+func _skin_material() -> ShaderMaterial:
+	return _paint(SKIN, Races.INFO[race]["skin"])
+
+
+## The skin of the head, with this race and sex's face painted on.
+func _face_material(r: float, jaw: float) -> ShaderMaterial:
+	var key := "face %s %s" % [race, sex]
+	if not _materials.has(key):
+		var info: Dictionary = Races.INFO[race]
+		var material: ShaderMaterial = _skin_material().duplicate()
+		material.set_shader_parameter("face", true)
+		material.set_shader_parameter("head_r", r)
+		material.set_shader_parameter("jaw", jaw)
+		material.set_shader_parameter("eye_size", info.get("eye_size", 1.0))
+		material.set_shader_parameter("brow_tilt", info.get("brow_tilt", 0.0))
+		material.set_shader_parameter("lid", info.get("lid", 0.0))
+		material.set_shader_parameter("smile", info.get("smile", 0.3))
+		material.set_shader_parameter("stubble", _body.get("stubble", 0.0))
+		material.set_shader_parameter("hair_color", info["hair_color"])
+		material.set_shader_parameter("iris_color", info["eye_color"])
+		material.set_shader_parameter("lip_color", LIP_COLOR.lerp(info["skin"], 0.3))
+		_materials[key] = material
+	return _materials[key]
