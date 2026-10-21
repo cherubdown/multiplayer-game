@@ -19,6 +19,7 @@ extends Node3D
 ## trunks on every peer, like the other trees (see harvestables.gd).
 
 const WorldGen := preload("res://scripts/world_gen.gd")
+const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 const Items := preload("res://scripts/items.gd")
 const Biome := WorldGen.Biome
 
@@ -503,12 +504,9 @@ static func _mesh(mesh_name: String, fade_end: float) -> Mesh:
 				parts.append([_ball(0.045 if raspberry else 0.035), Transform3D(Basis(), Vector3.UP * r * 0.7 + dir * r * 0.95)])
 			_add_surface(mesh, parts, Color(0.85, 0.1, 0.22) if raspberry else Color(0.2, 0.25, 0.75), fade_end)
 		"apple_tree":
-			_add_surface(mesh, [[_cylinder(0.18, 0.3, 2.6), Transform3D(Basis(), Vector3.UP * 1.3)]], Color(0.36, 0.24, 0.14), fade_end)
-			var crown := []
-			for c in [[Vector3(0.0, 3.4, 0.0), 1.5], [Vector3(0.8, 3.0, 0.3), 1.0], [Vector3(-0.7, 3.1, -0.4), 1.0],
-					[Vector3(0.1, 2.9, -0.9), 0.95], [Vector3(-0.2, 3.0, 0.9), 0.95]]:
-				crown.append([_ball(c[1]), Transform3D(Basis().scaled(Vector3(1.0, 0.8, 1.0)), c[0])])
-			_add_surface(mesh, crown, Color(0.28, 0.52, 0.2), fade_end)
+			# Painted like the other trees (see scripts/tree_meshes.gd), and
+			# shrinking away where the apples fade.
+			mesh = TreeMeshes.mesh("apple", fade_end - FADE_LENGTH, fade_end)
 		"apple":
 			_add_surface(mesh, [[_ball(0.11), Transform3D()]], Color(0.82, 0.12, 0.1), fade_end)
 		"branches":

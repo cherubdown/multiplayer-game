@@ -16,6 +16,7 @@ extends Node3D
 
 const WorldGen := preload("res://scripts/world_gen.gd")
 const Items := preload("res://scripts/items.gd")
+const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 const Biome := WorldGen.Biome
 
 ## Meters per side of the grid cells trees and rocks are scattered in. At most
@@ -427,57 +428,18 @@ func _shake(index: int) -> void:
 	_shakes[index] = tween
 
 
-## A simple low-poly stand-in for each kind, standing on y = 0.
+## The mesh for each kind, standing on y = 0. Trees are painted in the same
+## retro style as the characters (see scripts/tree_meshes.gd).
 func _mesh(kind: String) -> Mesh:
-	match kind:
-		"pine":
-			return _tree_mesh(_cone(2.2, 7.0), Color(0.12, 0.28, 0.14), 4.5)
-		"leafy":
-			var crown := SphereMesh.new()
-			crown.radius = 2.4
-			crown.height = 4.0
-			crown.radial_segments = 8
-			crown.rings = 4
-			return _tree_mesh(crown, Color(0.3, 0.5, 0.18), 4.5)
-		"dead":
-			return _tree_mesh(null, Color.BLACK, 5.0)
-		_:
-			var rock := SphereMesh.new()
-			rock.radius = 1.3
-			rock.height = 1.6
-			rock.radial_segments = 6
-			rock.rings = 3
-			rock.material = _material(Color(0.5, 0.5, 0.52))
-			return rock
-
-
-## Joins a trunk with an optional crown centered crown_y above the ground.
-func _tree_mesh(crown: PrimitiveMesh, crown_color: Color, crown_y: float) -> Mesh:
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.2
-	trunk.bottom_radius = 0.35
-	trunk.height = crown_y if crown else 5.0
-	trunk.radial_segments = 6
-	var tool := SurfaceTool.new()
-	var mesh := ArrayMesh.new()
-	tool.append_from(trunk, 0, Transform3D(Basis(), Vector3.UP * trunk.height * 0.5))
-	tool.commit(mesh)
-	mesh.surface_set_material(0, _material(Color(0.3, 0.2, 0.12) if crown else Color(0.25, 0.22, 0.18)))
-	if crown:
-		tool = SurfaceTool.new()
-		tool.append_from(crown, 0, Transform3D(Basis(), Vector3.UP * crown_y))
-		tool.commit(mesh)
-		mesh.surface_set_material(1, _material(crown_color))
-	return mesh
-
-
-func _cone(radius: float, height: float) -> CylinderMesh:
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = radius
-	cone.height = height
-	cone.radial_segments = 7
-	return cone
+	if kind != "rock":
+		return TreeMeshes.mesh(kind)
+	var rock := SphereMesh.new()
+	rock.radius = 1.3
+	rock.height = 1.6
+	rock.radial_segments = 6
+	rock.rings = 3
+	rock.material = _material(Color(0.5, 0.5, 0.52))
+	return rock
 
 
 func _material(color: Color) -> StandardMaterial3D:

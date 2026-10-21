@@ -11,11 +11,14 @@ extends Node3D
 ##   camera as it moves and freed behind it.
 ##
 ## Every mesh is made here from simple shapes and drawn with one shader
-## (shaders/foliage.gdshaderinc) that sways it in the wind and tints it per plant.
+## (shaders/foliage.gdshaderinc) that sways it in the wind and tints it per plant,
+## except the birches, which are painted like the other trees (see
+## scripts/tree_meshes.gd).
 
 const WorldGen := preload("res://scripts/world_gen.gd")
 const BLADES_SHADER := preload("res://shaders/foliage_blades.gdshader")
 const SOLID_SHADER := preload("res://shaders/foliage_solid.gdshader")
+const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 const Biome := WorldGen.Biome
 
 ## Meters per side of a ground cover chunk, and of the cell each plant is
@@ -63,7 +66,7 @@ const PLANTS := {
 	"fern": ["fern", Vector2(0.8, 1.4), [Color(0.2, 0.4, 0.15), Color(0.25, 0.45, 0.17)]],
 	"reeds": ["reeds", Vector2(0.8, 1.2), [Color(0.45, 0.5, 0.26), Color(0.5, 0.52, 0.28)]],
 	"bush": ["bush", Vector2(0.8, 1.5), [Color(0.3, 0.52, 0.2), Color(0.25, 0.45, 0.18), Color(0.35, 0.55, 0.22)]],
-	"birch": ["birch", Vector2(0.8, 1.2), [Color(0.55, 0.72, 0.28), Color(0.62, 0.75, 0.3)]],
+	"birch": ["birch", Vector2(0.8, 1.2), [Color(1, 1, 1)]],
 	"stump": ["stump", Vector2(0.8, 1.3), [Color(1, 1, 1)]],
 	"log": ["log", Vector2(0.8, 1.3), [Color(1, 1, 1)]],
 	"dead_bush": ["dead_bush", Vector2(0.8, 1.4), [Color(1, 1, 1)]],
@@ -76,9 +79,11 @@ const TUFT_SIZES := [[0.5, 0.4], [0.32, 0.65], [0.18, 1.0]]
 const TWO_SIDED := ["tuft", "flower", "fern", "reeds"]
 ## Meshes that cast shadows. Small plants don't, which saves a lot of drawing.
 const SHADOWED := ["bush", "birch", "stump", "log", "dead_bush"]
+## Meshes made and painted by scripts/tree_meshes.gd, with their own materials.
+const TREES := ["birch"]
 ## How far each mesh sways at its top.
 const SWAY := { "tuft": 0.12, "flower": 0.1, "fern": 0.06, "reeds": 0.18, "bush": 0.04,
-	"birch": 0.15, "dead_bush": 0.03 }
+	"dead_bush": 0.03 }
 
 ## Ground cover is built from the same seed as the island.
 var seed_number := 0
@@ -248,7 +253,8 @@ func _make_node(placed: Dictionary, at: Vector3) -> Node3D:
 		var instance := MultiMeshInstance3D.new()
 		instance.name = mesh_name.to_pascal_case()
 		instance.multimesh = multimesh
-		instance.material_override = _material(mesh_name)
+		if mesh_name not in TREES:
+			instance.material_override = _material(mesh_name)
 		if mesh_name not in SHADOWED:
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(instance)
@@ -275,10 +281,11 @@ func _material(mesh_name: String) -> ShaderMaterial:
 
 const STEM_GREEN := Color(0.3, 0.5, 0.18, 0.0)
 const BARK := Color(0.32, 0.22, 0.14, 0.0)
-const BIRCH_BARK := Color(0.88, 0.86, 0.8, 0.0)
 
 
 func _mesh(mesh_name: String) -> Mesh:
+	if mesh_name in TREES:
+		return TreeMeshes.mesh(mesh_name, SHRUB_FADE_START, SHRUB_FADE_END)
 	if not _meshes.has(mesh_name):
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -366,21 +373,6 @@ func _shape_bush(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
 		var size := rng.randf_range(0.45, 0.6) if n else 0.65
 		var shade := rng.randf_range(0.8, 1.0)
 		_sphere(st, center, Vector3(size, size * 0.8, size), Color(shade, shade, shade, 1.0), 7, 5, center.y, false, true)
-
-
-func _shape_birch(st: SurfaceTool, rng: RandomNumberGenerator) -> void:
-	_cylinder(st, Vector3.ZERO, Vector3.UP * 6.5, 0.22, 0.12, BIRCH_BARK, 7)
-	# Dark marks on the bark.
-	for n in 6:
-		var y := rng.randf_range(0.6, 5.0)
-		var a := rng.randf() * TAU
-		var on := Vector3(cos(a) * 0.19, y, sin(a) * 0.19)
-		_sphere(st, on, Vector3(0.06, 0.04, 0.06), Color(0.15, 0.13, 0.12, 0.0), 4, 2, 0.0)
-	for n in 4:
-		var a := n * TAU / 4.0 + rng.randf()
-		var center := Vector3(cos(a) * 0.6, rng.randf_range(4.6, 6.2), sin(a) * 0.6)
-		_sphere(st, center, Vector3(1.2, 1.6, 1.2), Color(1, 1, 1, 1), 7, 5, center.y / 6.5, false, true)
-	_sphere(st, Vector3.UP * 6.8, Vector3(1.0, 1.4, 1.0), Color(1, 1, 1, 1), 7, 5, 1.0, false, true)
 
 
 func _shape_stump(st: SurfaceTool, _rng: RandomNumberGenerator) -> void:

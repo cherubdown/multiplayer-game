@@ -9,6 +9,7 @@ const WorldGen := preload("res://scripts/world_gen.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
 const Forage := preload("res://scripts/forage.gd")
 const Items := preload("res://scripts/items.gd")
+const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 
 var _failures := 0
 
@@ -26,6 +27,12 @@ func _run() -> void:
 		_check_spots(WorldGen.new(seed_text))
 	for kind in Harvestables.KINDS:
 		_check(Items.is_valid(Harvestables.KINDS[kind]["drop"]), "%s drops a real item" % kind)
+	for kind in TreeMeshes.SWAY:
+		var mesh := TreeMeshes.mesh(kind)
+		_check(mesh.get_surface_count() == (1 if kind == "dead" else 2), "%s has bark and a crown" % kind)
+		for n in mesh.get_surface_count():
+			var material := mesh.surface_get_material(n) as ShaderMaterial
+			_check(material != null and material.shader == TreeMeshes.SHADER, "%s is painted" % kind)
 
 	# On a node outside any network it acts as the server without sending
 	# anything.
