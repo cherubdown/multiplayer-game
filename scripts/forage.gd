@@ -13,8 +13,9 @@ extends Node3D
 ## holds a few apples and grows them back one at a time. What's been picked is
 ## forgotten when the server restarts.
 ##
-## The plants are drawn on every peer that draws anything. A dedicated server
-## only keeps where they are and what's left on them. Apple trees have solid
+## The plants are drawn on every peer that draws anything, with every copy of
+## a mesh in a region drawn at once (GPU instancing, see _build_plants). A
+## dedicated server only keeps where they are and what's left on them. Apple trees have solid
 ## trunks on every peer, like the other trees (see harvestables.gd).
 
 const WorldGen := preload("res://scripts/world_gen.gd")
@@ -67,9 +68,14 @@ const MAX_ODDS := 0.32
 const TRUNK_RADIUS := 0.28
 const TRUNK_HEIGHT := 2.6
 const TRUNK_LAYER := 2
-## Plants stop drawing this far from the camera.
+## Plants stop drawing this far from the camera, fading out over the last
+## FADE_LENGTH meters.
 const SMALL_VISIBLE := 90.0
 const TREE_VISIBLE := 220.0
+const FADE_LENGTH := 10.0
+## Meters per side of the regions plants are drawn in. Every plant in a region
+## that shares a mesh is drawn together, in one MultiMesh.
+const REGION := 128.0
 
 ## Server side: picks grew back or were taken. Client side: the server said so.
 signal picks_changed(index: int, left: int)
@@ -83,6 +89,9 @@ var spots: Array = []
 var left := {}
 var _cells := {}  # Vector2i -> spot index
 var _plants := {}  # spot index -> Plant, on peers that draw them
+## On peers that draw: spot index -> part name -> [MultiMesh, instance number,
+## its transform when showing, whether it's showing].
+var _parts := {}
 ## Server side: spot index -> Time.get_ticks_msec() when its next pick grows back.
 var _regrow_at := {}
 ## Server side: peers that have the plants and want to hear what's picked.
@@ -344,6 +353,7 @@ func _build_trunks() -> void:
 # --- Drawing ----------------------------------------------------------------
 
 func _build_plants(surface_height: Callable) -> void:
+	var regions := {}  # Vector2i -> mesh name -> [[spot index, part, Transform3D], ...]
 	for i in spots.size():
 		var spot: Dictionary = spots[i]
 		var at: Vector3 = spot["position"]
@@ -354,66 +364,110 @@ func _build_plants(surface_height: Callable) -> void:
 		plant.position = Vector3(at.x, surface_height.call(at.x, at.z) - 0.03, at.z)
 		plant.rotation.y = spot["turn"]
 		plant.scale = Vector3.ONE * spot["size"]
-		var tree: bool = spot["kind"] == "apple_tree"
-		match spot["kind"]:
-			"mushroom":
-				_add_mesh(plant, "mushrooms", SMALL_VISIBLE)
-			"branches":
-				_add_mesh(plant, "branches", SMALL_VISIBLE)
-			"loose_stones":
-				_add_mesh(plant, "loose_stones", SMALL_VISIBLE)
-			"raspberry_bush":
-				_add_mesh(plant, "raspberry_bush", SMALL_VISIBLE)
-				_add_mesh(plant, "raspberries", SMALL_VISIBLE, "Fruit")
-			"blueberry_bush":
-				_add_mesh(plant, "blueberry_bush", SMALL_VISIBLE)
-				_add_mesh(plant, "blueberries", SMALL_VISIBLE, "Fruit")
-			"apple_tree":
-				_add_mesh(plant, "apple_tree", TREE_VISIBLE)
-				for n in spot["picks"]:
-					var apple := _add_mesh(plant, "apple", SMALL_VISIBLE, "Apple%d" % n)
-					var a: float = n * TAU / spot["picks"] + 0.4
-					apple.position = Vector3(cos(a) * 1.5, 2.45 + (n % 2) * 0.35, sin(a) * 1.5)
-		if not tree:
-			for child in plant.get_children():
-				child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_plants[i] = plant
 		add_child(plant)
+		var key := Vector2i(floori((at.x + WorldGen.SIZE * 0.5) / REGION),
+			floori((at.z + WorldGen.SIZE * 0.5) / REGION))
+		if not regions.has(key):
+			regions[key] = {}
+		var parts := []  # [mesh name, part, offset from the plant]
+		match spot["kind"]:
+			"raspberry_bush":
+				parts = [["raspberry_bush", "Body", Vector3.ZERO], ["raspberries", "Fruit", Vector3.ZERO]]
+			"blueberry_bush":
+				parts = [["blueberry_bush", "Body", Vector3.ZERO], ["blueberries", "Fruit", Vector3.ZERO]]
+			"apple_tree":
+				parts = [["apple_tree", "Body", Vector3.ZERO]]
+				for n in spot["picks"]:
+					var a: float = n * TAU / spot["picks"] + 0.4
+					parts.append(["apple", "Apple%d" % n, Vector3(cos(a) * 1.5, 2.45 + (n % 2) * 0.35, sin(a) * 1.5)])
+			"mushroom":
+				parts = [["mushrooms", "Body", Vector3.ZERO]]
+			_:
+				parts = [[spot["kind"], "Body", Vector3.ZERO]]
+		for part in parts:
+			if not regions[key].has(part[0]):
+				regions[key][part[0]] = []
+			regions[key][part[0]].append([i, part[1], plant.transform * Transform3D(Basis(), part[2])])
+	for key in regions:
+		var center := (Vector3(key.x, 0.0, key.y) + Vector3(0.5, 0.0, 0.5)) * REGION \
+			- Vector3(WorldGen.SIZE * 0.5, 0.0, WorldGen.SIZE * 0.5)
+		var region := Node3D.new()
+		region.name = "Plants_%d_%d" % [key.x, key.y]
+		region.position = center
+		for mesh_name in regions[key]:
+			region.add_child(_make_instances(mesh_name, regions[key][mesh_name], center))
+		add_child(region)
+	for i in spots.size():
 		_show(i)
 
 
-func _add_mesh(plant: Node3D, mesh_name: String, visible_range: float, node_name := "") -> MeshInstance3D:
-	var instance := MeshInstance3D.new()
-	if node_name != "":
-		instance.name = node_name
-	instance.mesh = _mesh(mesh_name)
-	instance.visibility_range_end = visible_range
-	instance.visibility_range_end_margin = 10.0
-	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-	plant.add_child(instance)
+## One MultiMeshInstance3D drawing `mesh_name` for every [spot index, part,
+## transform] in `placed`, positioned relative to `center`.
+func _make_instances(mesh_name: String, placed: Array, center: Vector3) -> MultiMeshInstance3D:
+	var tree := mesh_name == "apple_tree"
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = _mesh(mesh_name, TREE_VISIBLE if tree else SMALL_VISIBLE)
+	multimesh.instance_count = placed.size()
+	for n in placed.size():
+		var spot: int = placed[n][0]
+		var local: Transform3D = placed[n][2]
+		local.origin -= center
+		if not _parts.has(spot):
+			_parts[spot] = {}
+		_parts[spot][placed[n][1]] = [multimesh, n, local, true]
+		multimesh.set_instance_transform(n, local)
+	var instance := MultiMeshInstance3D.new()
+	instance.name = mesh_name.to_pascal_case()
+	instance.multimesh = multimesh
+	# Each plant fades out on its own (see _material); this just stops drawing
+	# whole regions once every plant in them has faded.
+	instance.visibility_range_end = (TREE_VISIBLE if tree else SMALL_VISIBLE) + REGION * 0.75
+	if not tree:
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return instance
+
+
+## Whether a part of a drawn plant ("Body", "Fruit" or "Apple0".."Apple5") is
+## showing.
+func is_shown(index: int, part: String) -> bool:
+	if not _parts.has(index) or not _parts[index].has(part):
+		return false
+	return _parts[index][part][3]
+
+
+func _set_shown(index: int, part: String, shown: bool) -> void:
+	var slot: Array = _parts[index][part]
+	slot[3] = shown
+	var local: Transform3D = slot[2]
+	if not shown:
+		local.basis = local.basis.scaled(Vector3.ZERO)
+	slot[0].set_instance_transform(slot[1], local)
 
 
 ## Shows what's left on a drawn plant: mushrooms vanish when picked, bushes
 ## lose their berries, and apple trees show one apple per pick left.
 func _show(index: int) -> void:
-	var plant: Node3D = _plants.get(index)
-	if plant == null:
+	if not _parts.has(index):
 		return
 	var have := picks_left(index)
 	match spots[index]["kind"]:
 		"mushroom", "branches", "loose_stones":
-			plant.visible = have > 0
+			_set_shown(index, "Body", have > 0)
 		"apple_tree":
 			for n in spots[index]["picks"]:
-				plant.get_node("Apple%d" % n).visible = n < have
+				_set_shown(index, "Apple%d" % n, n < have)
 		_:
-			plant.get_node("Fruit").visible = have > 0
+			_set_shown(index, "Fruit", have > 0)
 
 
-static func _mesh(mesh_name: String) -> Mesh:
-	if _meshes.has(mesh_name):
-		return _meshes[mesh_name]
+## A plant's mesh, made of one surface per color, fading out by `fade_end`
+## meters from the camera.
+static func _mesh(mesh_name: String, fade_end: float) -> Mesh:
+	var key := "%s@%d" % [mesh_name, fade_end]
+	if _meshes.has(key):
+		return _meshes[key]
 	var mesh := ArrayMesh.new()
 	match mesh_name:
 		"mushrooms":
@@ -425,8 +479,8 @@ static func _mesh(mesh_name: String) -> Mesh:
 				var s: float = m[1]
 				stems.append([_cylinder(0.035, 0.05, 0.2), Transform3D(Basis().scaled(Vector3.ONE * s), at + Vector3.UP * 0.1 * s)])
 				caps.append([_cap(0.14, 0.12), Transform3D(Basis().scaled(Vector3.ONE * s), at + Vector3.UP * 0.18 * s)])
-			_add_surface(mesh, stems, Color(0.92, 0.88, 0.78))
-			_add_surface(mesh, caps, Color(0.6, 0.38, 0.2))
+			_add_surface(mesh, stems, Color(0.92, 0.88, 0.78), fade_end)
+			_add_surface(mesh, caps, Color(0.6, 0.38, 0.2), fade_end)
 		"raspberry_bush", "blueberry_bush":
 			var raspberry := mesh_name == "raspberry_bush"
 			var r := 0.55 if raspberry else 0.42
@@ -435,7 +489,7 @@ static func _mesh(mesh_name: String) -> Mesh:
 				var a := n * TAU / 3.0
 				var at := Vector3.UP * r * 0.9 if n == 3 else Vector3(cos(a) * r * 0.5, r * 0.7, sin(a) * r * 0.5)
 				parts.append([_ball(r * (0.8 if n == 3 else 0.7)), Transform3D(Basis(), at)])
-			_add_surface(mesh, parts, Color(0.27, 0.5, 0.2) if raspberry else Color(0.2, 0.36, 0.22))
+			_add_surface(mesh, parts, Color(0.27, 0.5, 0.2) if raspberry else Color(0.2, 0.36, 0.22), fade_end)
 		"raspberries", "blueberries":
 			var raspberry := mesh_name == "raspberries"
 			var r := 0.55 if raspberry else 0.42
@@ -447,51 +501,59 @@ static func _mesh(mesh_name: String) -> Mesh:
 				var up := rng.randf_range(0.15, 0.85)
 				var dir := Vector3(cos(a) * (1.0 - up * 0.6), up, sin(a) * (1.0 - up * 0.6)).normalized()
 				parts.append([_ball(0.045 if raspberry else 0.035), Transform3D(Basis(), Vector3.UP * r * 0.7 + dir * r * 0.95)])
-			_add_surface(mesh, parts, Color(0.85, 0.1, 0.22) if raspberry else Color(0.2, 0.25, 0.75))
+			_add_surface(mesh, parts, Color(0.85, 0.1, 0.22) if raspberry else Color(0.2, 0.25, 0.75), fade_end)
 		"apple_tree":
-			_add_surface(mesh, [[_cylinder(0.18, 0.3, 2.6), Transform3D(Basis(), Vector3.UP * 1.3)]], Color(0.36, 0.24, 0.14))
+			_add_surface(mesh, [[_cylinder(0.18, 0.3, 2.6), Transform3D(Basis(), Vector3.UP * 1.3)]], Color(0.36, 0.24, 0.14), fade_end)
 			var crown := []
 			for c in [[Vector3(0.0, 3.4, 0.0), 1.5], [Vector3(0.8, 3.0, 0.3), 1.0], [Vector3(-0.7, 3.1, -0.4), 1.0],
 					[Vector3(0.1, 2.9, -0.9), 0.95], [Vector3(-0.2, 3.0, 0.9), 0.95]]:
 				crown.append([_ball(c[1]), Transform3D(Basis().scaled(Vector3(1.0, 0.8, 1.0)), c[0])])
-			_add_surface(mesh, crown, Color(0.28, 0.52, 0.2))
+			_add_surface(mesh, crown, Color(0.28, 0.52, 0.2), fade_end)
 		"apple":
-			_add_surface(mesh, [[_ball(0.11), Transform3D()]], Color(0.82, 0.12, 0.1))
+			_add_surface(mesh, [[_ball(0.11), Transform3D()]], Color(0.82, 0.12, 0.1), fade_end)
 		"branches":
 			# A few sticks lying crossed on the ground.
 			var sticks := []
 			for b in [[0.0, 0.9, 0.035], [1.1, 0.75, 0.03], [2.3, 0.6, 0.025]]:
 				var lie := Basis(Vector3.UP, b[0]) * Basis(Vector3.FORWARD, PI * 0.5)
 				sticks.append([_cylinder(b[2], b[2] * 1.3, b[1]), Transform3D(lie, Vector3.UP * b[2])])
-			_add_surface(mesh, sticks, Color(0.45, 0.3, 0.17))
+			_add_surface(mesh, sticks, Color(0.45, 0.3, 0.17), fade_end)
 		"loose_stones":
 			# A small pile of flattened grey stones.
 			var stones := []
 			for p in [[Vector3.ZERO, 0.16], [Vector3(0.22, 0.0, 0.08), 0.11], [Vector3(-0.12, 0.0, 0.18), 0.09]]:
 				var r: float = p[1]
 				stones.append([_ball(r), Transform3D(Basis().scaled(Vector3(1.0, 0.6, 0.9)), p[0] + Vector3.UP * r * 0.4)])
-			_add_surface(mesh, stones, Color(0.56, 0.56, 0.58))
-	_meshes[mesh_name] = mesh
+			_add_surface(mesh, stones, Color(0.56, 0.56, 0.58), fade_end)
+	_meshes[key] = mesh
 	return mesh
 
 
 ## Joins `parts` ([PrimitiveMesh, Transform3D] pairs) into one surface of
-## `mesh` in one color.
-static func _add_surface(mesh: ArrayMesh, parts: Array, color: Color) -> void:
+## `mesh` in one color, fading out by `fade_end` (see _material).
+static func _add_surface(mesh: ArrayMesh, parts: Array, color: Color, fade_end: float) -> void:
 	var st := SurfaceTool.new()
 	for part in parts:
 		st.append_from(part[0], 0, part[1])
 	st.commit(mesh)
-	mesh.surface_set_material(mesh.get_surface_count() - 1, _material(color))
+	mesh.surface_set_material(mesh.get_surface_count() - 1, _material(color, fade_end))
 
 
-static func _material(color: Color) -> StandardMaterial3D:
-	if not _materials.has(color):
+## A plain material in `color`. Each plant dithers away over the last
+## FADE_LENGTH meters before `fade_end` from the camera, so plants that share
+## one MultiMesh still disappear one at a time.
+static func _material(color: Color, fade_end: float) -> StandardMaterial3D:
+	var key := "%s@%d" % [color.to_html(), fade_end]
+	if not _materials.has(key):
 		var material := StandardMaterial3D.new()
 		material.albedo_color = color
 		material.roughness = 0.85
-		_materials[color] = material
-	return _materials[color]
+		material.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
+		# Reversed (min past max), so it fades out with distance.
+		material.distance_fade_min_distance = fade_end
+		material.distance_fade_max_distance = fade_end - FADE_LENGTH
+		_materials[key] = material
+	return _materials[key]
 
 
 static func _ball(radius: float) -> SphereMesh:
