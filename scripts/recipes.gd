@@ -16,6 +16,7 @@ extends RefCounted
 const Items := preload("res://scripts/items.gd")
 
 const RECIPES := [
+	{ "id": "wood_sword", "result": "wood_sword", "count": 1, "ingredients": { "wood": 5 } },
 	{ "id": "stone_axe", "result": "stone_axe", "count": 1, "ingredients": { "wood": 5, "stone": 3 } },
 	{ "id": "stone_pickaxe", "result": "stone_pickaxe", "count": 1, "ingredients": { "wood": 5, "stone": 5 } },
 	{ "id": "stone_sword", "result": "stone_sword", "count": 1, "ingredients": { "wood": 5, "stone": 5 } },

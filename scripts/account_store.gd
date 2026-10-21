@@ -1,6 +1,6 @@
 extends RefCounted
-## Server-side accounts, characters (with their inventories and where they
-## were standing) and the world (its seed and what is in its chests), saved in
+## Server-side accounts, characters (with their inventories, their health and
+## where they were standing) and the world (its seed and what is in its chests), saved in
 ## a SQLite database (user://accounts.db by default). The database and its
 ## tables are created the first time the server needs them, so a new server
 ## needs no setup.
@@ -18,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 7
+const SCHEMA_VERSION := 8
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -245,6 +245,32 @@ func save_position(username: String, character_name: String, position: Vector3, 
 	return ok
 
 
+## A character's health when they last left the world, or -1 for one that
+## has never been hurt (they start at full health).
+func load_health(username: String, character_name: String) -> int:
+	if not is_open():
+		return -1
+	_db.query_with_bindings(
+		"SELECT c.health FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty() or _db.query_result[0]["health"] == null:
+		return -1
+	return int(_db.query_result[0]["health"])
+
+
+## Saves a character's health.
+func save_health(username: String, character_name: String, health: int) -> bool:
+	var account := _account(username)
+	if account.is_empty():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET health = ? WHERE account_id = ? AND name_key = ?",
+		[health, account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's health in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
 ## What is in one of the world's chests, as slots for Inventory.load_array(),
 ## or [] for a chest that has never been used.
 func load_chest(chest_id: String) -> Array:
@@ -453,6 +479,19 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add discoveries to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 8:
+		# Each character's health. NULL until they've been in the world, so
+		# they start at full health.
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN health INTEGER;
+			PRAGMA user_version = 8;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add character health to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

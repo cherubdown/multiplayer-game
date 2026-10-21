@@ -131,6 +131,30 @@ func play_once(anim_name: String) -> void:
 			_play("Idle", 1.0)
 
 
+## Tints the whole model `color` for a moment, as when it's hurt.
+func flash(color: Color) -> void:
+	flash_meshes(self, color)
+
+
+## Tints every mesh under `root` `color` for a moment. Materials are shared
+## between models, so this lays a see-through overlay on top instead of
+## changing them.
+static func flash_meshes(root: Node, color: Color, seconds := 0.18) -> void:
+	if not root.is_inside_tree():
+		return
+	var overlay := StandardMaterial3D.new()
+	overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	overlay.albedo_color = Color(color, 0.55)
+	var meshes := root.find_children("*", "MeshInstance3D", true, false)
+	for mesh: MeshInstance3D in meshes:
+		mesh.material_overlay = overlay
+	await root.get_tree().create_timer(seconds).timeout
+	for mesh in meshes:
+		if is_instance_valid(mesh) and mesh.material_overlay == overlay:
+			mesh.material_overlay = null
+
+
 func _play(anim_name: String, speed: float) -> void:
 	_animation.speed_scale = speed
 	if _current == anim_name:

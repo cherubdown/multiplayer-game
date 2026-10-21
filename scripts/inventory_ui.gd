@@ -11,7 +11,8 @@ extends CanvasLayer
 ## or off the panels to drop it on the ground; with a chest open, the chest
 ## takes the crafting window's place and clicking a stack sends it across.
 ## Right-click a tool to hold it (or put it away), then left-click in the world
-## to swing it at the tree or rock in reach (see scripts/harvestables.gd).
+## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
+## with a weapon at the enemy in reach (see scripts/big_frog.gd).
 ## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
 ## All of it only sends requests: the server owns every inventory (see Session
 ## and scripts/chest.gd).
@@ -19,6 +20,7 @@ extends CanvasLayer
 const Items := preload("res://scripts/items.gd")
 const Recipes := preload("res://scripts/recipes.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
+const BigFrog := preload("res://scripts/big_frog.gd")
 
 const COLUMNS := 5
 
@@ -75,8 +77,11 @@ func _process(_delta: float) -> void:
 		text = "[E] %s" % target.prompt()
 	elif not _screen.visible:
 		var harvestables: Node = get_parent().get("harvestables")
+		var enemy := _enemy_target()
 		var index := _harvest_target()
-		if index >= 0:
+		if enemy != null:
+			text = enemy.prompt_for(Session.held_item)
+		elif index >= 0:
 			text = harvestables.prompt_for(index, Session.held_item)
 	_prompt.visible = text != ""
 	_prompt.text = text
@@ -106,7 +111,8 @@ func _input(event: InputEvent) -> void:
 		_swing()
 
 
-## Swings the held tool, at the tree or rock in reach if there is one.
+## Swings the held tool: a weapon at the enemy in reach if there is one,
+## otherwise at the tree or rock in reach if there is one.
 func _swing() -> void:
 	var harvestables: Node = get_parent().get("harvestables")
 	var player := _local_player()
@@ -116,7 +122,29 @@ func _swing() -> void:
 	if now - _last_swing < int(Harvestables.SWING_SECONDS * 1000.0):
 		return
 	_last_swing = now
-	harvestables.swing(_harvest_target(), player.get_node("PlayerInput").yaw)
+	var yaw: float = player.get_node("PlayerInput").yaw
+	var enemy := _enemy_target()
+	if enemy != null and Items.is_weapon(Session.held_item):
+		enemy.attack(yaw)
+	else:
+		harvestables.swing(_harvest_target(), yaw)
+
+
+## The nearest living enemy in the local player's reach, or null.
+func _enemy_target() -> Node3D:
+	var player := _local_player()
+	if player == null:
+		return null
+	var best: Node3D = null
+	var best_gap := BigFrog.REACH
+	for enemy: Node3D in get_tree().get_nodes_in_group("enemies"):
+		if not enemy.is_alive():
+			continue
+		var gap: float = enemy.gap_to(player.global_position)
+		if gap <= best_gap:
+			best = enemy
+			best_gap = gap
+	return best
 
 
 ## The standing tree or rock in the local player's reach, or -1.

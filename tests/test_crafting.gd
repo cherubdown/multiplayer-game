@@ -26,22 +26,29 @@ func _run() -> void:
 			valid = valid and Items.is_valid(item) and recipe["ingredients"][item] > 0
 	_check(valid, "every recipe has a unique id and makes and uses real items")
 
+	_check(Recipes.find("wood_sword")["ingredients"] == { "wood": 5 }, "a wood sword takes 5 wood")
 	_check(Recipes.find("stone_sword")["ingredients"] == { "wood": 5, "stone": 5 }, "a stone sword takes 5 wood and 5 stone")
 	_check(Recipes.find("stone_axe")["ingredients"] == { "wood": 5, "stone": 3 }, "a stone axe takes 5 wood and 3 stone")
 	_check(Recipes.find("stone_pickaxe")["ingredients"] == { "wood": 5, "stone": 5 }, "a stone pickaxe takes 5 wood and 5 stone")
 	_check(Recipes.find("nothing").is_empty(), "an unknown recipe isn't found")
 	_check(Items.tool_type("stone_axe") == "axe" and Items.tool_type("stone_pickaxe") == "pickaxe" \
-		and Items.tool_type("stone_sword") == "sword" and Items.tool_type("wood") == "", "tools know what they are")
+		and Items.tool_type("stone_sword") == "sword" and Items.tool_type("wood_sword") == "sword" \
+		and Items.tool_type("wood") == "", "tools know what they are")
+	_check(Items.attack_damage("wood_sword") == 10, "a wood sword hits for 10")
+	_check(Items.attack_damage("stone_sword") > Items.attack_damage("wood_sword"), "a stone sword hits harder than a wood one")
+	_check(not Items.is_weapon("stone_axe") and not Items.is_weapon("wood") and Items.is_weapon("wood_sword"),
+		"only swords are weapons")
 	_check(Items.max_stack("stone_axe") == 1, "tools don't stack")
-	for item in ["stone_axe", "stone_pickaxe", "stone_sword"]:
+	for item in ["wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"]:
 		_check(Items.icon(item) != null, "%s has an icon" % item)
 		_check(Items.tool_mesh(item).get_surface_count() >= 2, "%s has a mesh to hold" % item)
 
 	# Recipes unlock once every ingredient has been discovered.
 	_check(Recipes.unlocked({}) == [], "a new character knows no recipes")
-	_check(Recipes.unlocked({ "wood": true, "berries": true }) == [], "wood alone unlocks nothing")
-	_check(Recipes.unlocked({ "wood": true, "stone": true }) == ["stone_axe", "stone_pickaxe", "stone_sword"],
-		"wood and stone unlock the stone tools, in order")
+	_check(Recipes.unlocked({ "stone": true, "berries": true }) == [], "stone alone unlocks nothing")
+	_check(Recipes.unlocked({ "wood": true, "berries": true }) == ["wood_sword"], "wood alone unlocks the wood sword")
+	_check(Recipes.unlocked({ "wood": true, "stone": true }) == ["wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"],
+		"wood and stone unlock the stone tools too, in order")
 	_check(not Recipes.is_unlocked({}, { "wood": true }), "a missing recipe is never unlocked")
 	var stocked := Inventory.new(4)
 	stocked.add("wood", 10)
@@ -69,6 +76,9 @@ func _run() -> void:
 	_check(inv.count_of("stone_axe") == 1 and inv.count_of("wood") == 2 and inv.count_of("stone") == 3,
 		"crafting uses up the ingredients and gives the tool")
 	_check(not Recipes.can_craft(Recipes.find("stone_pickaxe"), inv), "can't craft a pickaxe with what's left")
+	inv.add("wood", 3)
+	_check(Recipes.craft("wood_sword", inv, { "wood": true }) == "" and inv.count_of("wood_sword") == 1 \
+		and inv.count_of("wood") == 0, "crafts a wood sword from 5 wood")
 
 	# Crafting frees the slots its ingredients were in, so a full inventory
 	# can still craft if that leaves room.

@@ -120,15 +120,24 @@ The inventory screen (**Tab**) has a **Crafting** window on its right. Each reci
 
 | Recipe | Takes | Does |
 | :--- | :--- | :--- |
+| Wood Sword | 5 wood | A weapon: hits for 10 |
 | Stone Axe | 5 wood, 3 stone | Chops down trees |
 | Stone Pickaxe | 5 wood, 5 stone | Breaks big rocks |
-| Stone Sword | 5 wood, 5 stone | A weapon, for when there's something to fight |
+| Stone Sword | 5 wood, 5 stone | A better weapon: hits for 15 |
 
-You have to discover a recipe before it shows up: once you've had at least one of each thing it takes in your inventory, a **New recipe discovered!** notice pops up at the top of the screen and the recipe appears in the list. A new character knows no recipes, so pick up some wood and stone first. What each character has discovered is saved with them, so it's still known after logging out.
+You have to discover a recipe before it shows up: once you've had at least one of each thing it takes in your inventory, a **New recipe discovered!** notice pops up at the top of the screen and the recipe appears in the list. A new character knows no recipes: picking up wood unlocks the Wood Sword, and wood and stone the stone tools. What each character has discovered is saved with them, so it's still known after logging out.
 
 Crafting happens on the server, which checks you've discovered the recipe, have everything and have room for what you make. A tool you craft with empty hands goes straight into your hand. Otherwise right-click a tool in your inventory to hold it, and right-click it again to put it away; the tool in your hand has a gold border, and everyone sees you holding it.
 
 Holding an axe, walk up to a tree and left-click to swing at it. A pine takes 6 hits, a leafy tree 5 and a dead tree 3, and when it comes down it drops 2 to 7 wood on the ground where it stood, for anyone to pick up. A pickaxe breaks the big rocks in 6 hits for 4 to 7 stone. The prompt at the bottom of the screen says which tool something needs and how many hits are left. Everyone sees each hit and sees it come down. Felled trees grow back after 8 to 10 minutes, and rocks after 15, though never on top of someone standing there.
+
+### Health and fighting
+
+Every character has **50 health**, shown in the bottom left corner of the screen. Other players' health shows as a bar under their names. Getting hurt flashes the screen red. Health comes back by itself, 1 point every 2 seconds once nothing has hurt you for 10 seconds. At 0 you die: you come back at the spawn with full health, keeping everything you carry. Your health is saved with your character, so logging out hurt doesn't heal you.
+
+A **Big Frog** lives about 15 m from the spawn, past the test items, to try fighting on. It has 20 health, which shows in a bar over its head. It sits about hopping now and then until someone comes within 6 m, then hops after them and bites for 5 health every 1.8 seconds. It gives up on anyone who gets more than 14 m from its home, and leaves you alone for a few seconds after killing you. Hold a sword (craft a Wood Sword from 5 wood) and left-click when you're next to it to hit it: a Wood Sword takes 10 off, so two hits kill it, and a Stone Sword 15. Axes and pickaxes aren't weapons. Hitting the frog makes it come after you. A new frog appears 30 seconds after one is killed. The server decides every hit and bite, and everyone sees the frog hop, bite and take hits. Players can walk through it, though it can't walk through them.
+
+The Big Frog's health, damage, speed and ranges are at the top of `scripts/big_frog.gd`, and player health and how fast it comes back at the top of `scripts/player.gd`. A weapon is a tool item with an `attack` value in `scripts/items.gd`.
 
 The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window once a player has discovered everything it takes and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
 
@@ -142,8 +151,9 @@ The recipes are in `scripts/recipes.gd`: to add one, add a line with what it mak
 - `scenes/test_world.tscn` with `scripts/test_world.gd` is the game world. It builds the terrain once the world seed is known, and on the server spawns a player per peer through a `MultiplayerSpawner`.
 - `scripts/world_gen.gd` turns a seed into the island's heights and biomes (deterministic noise, so every peer agrees). `scripts/terrain.gd` builds the ground collision from it, plus the biome-colored ground and sea on peers that draw.
 - `scripts/harvestables.gd` places the trees and big rocks from the seed, makes them solid on every peer, and handles chopping and breaking them. `scripts/forage.gd` does the same for the things you pick up with **E**.
+- `scenes/big_frog.tscn` with `scripts/big_frog.gd` is the Big Frog enemy, which the server runs and `EnemySpawner` in the world replicates. `scripts/hud.gd` draws the health bar in the corner of the screen and `scripts/health_bar_3d.gd` the ones floating over the frog and other players.
 - `scripts/items.gd` lists every kind of item, including tools. `scripts/recipes.gd` lists what can be crafted, and `scripts/inventory_ui.gd` draws the inventory, chest and crafting windows.
 - `scripts/races.gd` defines the races and their body measurements; `scripts/character_model.gd` builds and animates the model for a race and sex, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
-- `tests/` has headless tests for the account store, the world generator, foraging, crafting, chopping trees and the whole login flow; `.github/scripts/run-tests.sh` runs them (CI does too).
+- `tests/` has headless tests for the account store, the world generator, foraging, crafting, chopping trees, health and the Big Frog, and the whole login flow (which also crafts a wood sword and kills the frog); `.github/scripts/run-tests.sh` runs them (CI does too).
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.
