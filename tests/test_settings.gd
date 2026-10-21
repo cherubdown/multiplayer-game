@@ -59,6 +59,12 @@ func _run() -> void:
 	_check(settings.get_value("display/fullscreen") == true, "the toggle turns full screen on")
 	settings.set_value("display/fullscreen", false)
 	_check(not toggle.button_pressed, "the toggle follows the setting")
+	var quit_button: Button = options.find_child("QuitButton", true, false)
+	_check(quit_button != null and quit_button.text == "Quit game", "has a Quit game button")
+	if quit_button != null:
+		quit_button.pressed.emit()
+	_check(options.quit_confirm.visible, "Quit game asks before closing")
+	options.quit_confirm.hide()
 	var extra: Control = options.add_page("Extra", Label.new())
 	_check(extra.get_parent() != null, "takes extra pages")
 	settings.set_value("display/fullscreen", true)

@@ -8,7 +8,8 @@ extends CanvasLayer
 ## for each setting built from its type, so new settings show up here without
 ## touching this script. Pages that aren't simple settings (key bindings, say)
 ## can be added with add_page(). Esc or Close shuts the window; changes save
-## and take effect straight away.
+## and take effect straight away. Quit game leaves the game cleanly and closes
+## the app (see Network.quit_game()), after asking to make sure.
 
 ## Above the menu and the inventory screen.
 const LAYER := 100
@@ -18,6 +19,8 @@ const MARGIN := 12
 var button: Button
 var _window: Control
 var _tabs: TabContainer
+## Asks before Quit game closes the app.
+var quit_confirm: ConfirmationDialog
 ## Setting id -> the control showing it.
 var _controls := {}
 
@@ -132,13 +135,31 @@ func _build() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buttons.add_child(spacer)
+	var quit_button := Button.new()
+	quit_button.name = "QuitButton"
+	quit_button.text = "Quit game"
+	quit_button.tooltip_text = "Save, leave the game and close the window"
+	quit_button.pressed.connect(_on_quit_pressed)
+	buttons.add_child(quit_button)
 	var close_button := Button.new()
 	close_button.text = "Close"
 	close_button.pressed.connect(close)
 	buttons.add_child(close_button)
 
+	quit_confirm = ConfirmationDialog.new()
+	quit_confirm.name = "QuitConfirm"
+	quit_confirm.title = "Quit game"
+	quit_confirm.dialog_text = "Quit the game? Your character is saved before it closes."
+	quit_confirm.ok_button_text = "Quit"
+	quit_confirm.confirmed.connect(func() -> void: Network.quit_game())
+	add_child(quit_confirm)
+
 	_build_tabs()
 	_refresh_all()
+
+
+func _on_quit_pressed() -> void:
+	quit_confirm.popup_centered()
 
 
 ## One tab per section of Settings.DEFINITIONS.

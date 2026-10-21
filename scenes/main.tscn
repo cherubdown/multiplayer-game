@@ -80,6 +80,12 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Join"
 
+[node name="QuitButton" type="Button" parent="Center/Panel/Margin/VBox/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Close the game"
+text = "Quit"
+
 [node name="Login" type="VBoxContainer" parent="Center/Panel/Margin/VBox"]
 unique_name_in_owner = true
 visible = false
@@ -222,6 +228,12 @@ text = "Character select"
 unique_name_in_owner = true
 layout_mode = 2
 text = "Leave"
+
+[node name="QuitGameButton" type="Button" parent="Center/Panel/Margin/VBox/Lobby"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Save, leave the game and close the window"
+text = "Quit game"
 
 [node name="Status" type="Label" parent="Center/Panel/Margin/VBox"]
 unique_name_in_owner = true

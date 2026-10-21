@@ -32,9 +32,14 @@ var _server_is_dedicated := false
 ## Client: the password to send.
 var _password := ""
 var _rejected := false
+var _quitting := false
 
 
 func _ready() -> void:
+	# Closing the window goes through quit_game() so the player is saved first.
+	# A dedicated server has no window and stops as before.
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("dedicated_server"):
+		get_tree().set_auto_accept_quit(false)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -90,6 +95,24 @@ func disconnect_from_game() -> void:
 	_password = ""
 	_set_status("Offline")
 	peers_changed.emit([] as Array[int])
+
+
+## Leaves any game cleanly, then closes the app. Safe at any time: from the
+## menu, mid-game, or while hosting. A client disconnecting has the server save
+## where its character stood and what it carried (Session does this for every
+## player that leaves); a host saves everyone in its world before closing.
+func quit_game(exit_code: int = 0) -> void:
+	if _quitting:
+		return
+	_quitting = true
+	if mode != Mode.OFFLINE:
+		if multiplayer.is_server():
+			Session.save_positions()
+		disconnect_from_game()
+		# Give the disconnect a frame to go out before the app goes away.
+		await get_tree().process_frame
+	print("Quitting")
+	get_tree().quit(exit_code)
 
 
 func is_dedicated_server() -> bool:
@@ -219,6 +242,11 @@ func _on_connection_failed() -> void:
 func _on_server_disconnected() -> void:
 	disconnect_from_game()
 	_set_status("Server closed the connection")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit_game()
 
 
 func _emit_peers() -> void:
