@@ -37,6 +37,9 @@ func _run() -> void:
 	_check(bush >= 0 and tree >= 0, "there's a raspberry bush and an apple tree to test on")
 	if bush >= 0 and tree >= 0:
 		_check_picking(forage, bush, tree)
+	var mushroom := _first(forage.spots, "mushroom")
+	if mushroom >= 0:
+		_check_sparkle(forage, mushroom, bush)
 	forage.queue_free()
 
 	print("Forage: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
@@ -116,6 +119,16 @@ func _check_instancing(forage: Node) -> void:
 		parts += spot.size()
 	_check(regions.size() > 1 and single == 0 and instanced == parts and parts >= forage.spots.size(),
 		"plants are drawn with one MultiMesh per mesh per region (%d regions, %d instances)" % [regions.size(), instanced])
+
+
+## Things on the ground glint until they're picked; bushes and trees don't.
+func _check_sparkle(forage: Node, mushroom: int, bush: int) -> void:
+	_check(forage.is_shown(mushroom, "Sparkle") and not forage.is_shown(bush, "Sparkle"),
+		"a mushroom on the ground glints, a bush doesn't")
+	forage.take(mushroom, 0)
+	_check(not forage.is_shown(mushroom, "Sparkle"), "a picked mushroom stops glinting")
+	forage.regrow(300000)
+	_check(forage.is_shown(mushroom, "Sparkle"), "the glint comes back with the mushroom")
 
 
 func _first(spots: Array, kind: String) -> int:
