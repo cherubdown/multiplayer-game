@@ -1,8 +1,7 @@
 extends CanvasLayer
-## The options window (autoload "OptionsMenu"), and the Options button in the
-## bottom left corner that opens it. Both sit above every other screen: the
-## Host / Join menu, login, character select and the world (press Esc there
-## first to free the mouse).
+## The options window (autoload "OptionsMenu"). It sits above every other
+## screen and opens from the Options buttons on the Host / Join menu and on the
+## Esc menu in the world (see main.gd).
 ##
 ## The window has one tab per section of Settings.DEFINITIONS, with a control
 ## for each setting built from its type, so new settings show up here without
@@ -13,10 +12,7 @@ extends CanvasLayer
 
 ## Above the menu and the inventory screen.
 const LAYER := 100
-const MARGIN := 12
 
-## The button in the bottom left corner.
-var button: Button
 var _window: Control
 var _tabs: TabContainer
 ## Asks before Quit game closes the app.
@@ -74,16 +70,6 @@ func _input(event: InputEvent) -> void:
 
 
 func _build() -> void:
-	button = Button.new()
-	button.name = "OptionsButton"
-	button.text = "Options"
-	button.tooltip_text = "Settings such as full screen"
-	button.focus_mode = Control.FOCUS_NONE
-	button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, MARGIN)
-	button.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	button.pressed.connect(toggle)
-	add_child(button)
-
 	# Fills the screen so clicks don't reach the menu or the game behind it.
 	_window = Control.new()
 	_window.name = "OptionsWindow"

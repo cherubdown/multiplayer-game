@@ -23,6 +23,9 @@ extends Control
 ## starts (same path everywhere, so MultiplayerSpawner can replicate players
 ## into it). Once in the world, the menu becomes an overlay toggled with Esc.
 ##
+## Options on the Host / Join menu and on the in-world overlay opens the options
+## window (the OptionsMenu autoload).
+##
 ## Quit (on the Host / Join menu), Quit game (on the in-world overlay and in
 ## the options window) and closing the window all go through Network.quit_game(),
 ## which saves and disconnects before the app closes.
@@ -71,6 +74,7 @@ func _ready() -> void:
 	Session.roster_changed.connect(_on_roster_changed)
 	%HostButton.pressed.connect(_on_host_pressed)
 	%JoinButton.pressed.connect(_on_join_pressed)
+	%OptionsButton.pressed.connect(OptionsMenu.open)
 	%QuitButton.pressed.connect(Network.quit_game)
 	%LoginButton.pressed.connect(_on_login_pressed)
 	%RegisterButton.pressed.connect(_on_register_pressed)
@@ -88,6 +92,7 @@ func _ready() -> void:
 	%LogoutButton.pressed.connect(_on_logout_pressed)
 	%CharacterSelectButton.pressed.connect(Session.leave_world)
 	%LeaveButton.pressed.connect(_on_leave_pressed)
+	%LobbyOptionsButton.pressed.connect(OptionsMenu.open)
 	%QuitGameButton.pressed.connect(OptionsMenu.quit_confirm.popup_centered)
 	_port.value = Network.DEFAULT_PORT
 	_address.text = Network.DEFAULT_ADDRESS
