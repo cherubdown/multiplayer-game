@@ -98,7 +98,7 @@ To add a setting, declare it in `DEFINITIONS` in `scripts/settings.gd` (a toggle
 
 ## Playing
 
-Once you pick a character you're on the island: a new character starts in the Meadows, and after that you come back where you left off, facing the same way. The server saves where every character stands when they leave the world or disconnect, and every 15 seconds in case it stops without warning. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
+Once you pick a character you're on the island: a new character starts in the Meadows, and after that you come back where you left off, facing the same way. The server saves where every character stands when they leave the world or disconnect, and every 15 seconds in case it stops without warning. Move with WASD or the arrow keys (hold Left Ctrl to walk instead of run, or Shift to sprint), jump with Space, and look around with the mouse. Esc shows the menu (with Character select and Leave) and frees the mouse; click to go back in. Other players' character names float above their heads.
 
 ### Items and chests
 
@@ -135,9 +135,11 @@ Holding an axe, walk up to a tree and left-click to swing at it. A pine takes 6 
 
 Every character has **50 health**, shown in the bottom left corner of the screen. Other players' health shows as a bar under their names. Getting hurt flashes the screen red. Health comes back by itself, 1 point every 2 seconds once nothing has hurt you for 10 seconds. At 0 you die: you come back at the spawn with full health, keeping everything you carry. Your health is saved with your character, so logging out hurt doesn't heal you.
 
+Under the health bar is **stamina**, 100 when full. Holding Shift while moving sprints (8 m/s instead of 5), using 20 stamina a second, and every swing of a sword uses 15. Stamina comes back quickly, 35 a second, starting a moment after you last used it, so it fills from empty in about 3 seconds. With none left you can't sprint or attack, and after running it dry you can't sprint again until it's back to 25. Axes and pickaxes swing for free. The server owns stamina the same way it owns health.
+
 A **Big Frog** lives about 15 m from the spawn, past the test items, to try fighting on. It has 20 health, which shows in a bar over its head. It sits about hopping now and then until someone comes within 6 m, then hops after them and bites for 5 health every 1.8 seconds. It gives up on anyone who gets more than 14 m from its home, and leaves you alone for a few seconds after killing you. Hold a sword (craft a Wood Sword from 5 wood) and left-click when you're next to it to hit it: a Wood Sword takes 10 off, so two hits kill it, and a Stone Sword 15. Axes and pickaxes aren't weapons. Hitting the frog makes it come after you. A new frog appears 30 seconds after one is killed. The server decides every hit and bite, and everyone sees the frog hop, bite and take hits. Players can walk through it, though it can't walk through them.
 
-The Big Frog's health, damage, speed and ranges are at the top of `scripts/big_frog.gd`, and player health and how fast it comes back at the top of `scripts/player.gd`. A weapon is a tool item with an `attack` value in `scripts/items.gd`.
+The Big Frog's health, damage, speed and ranges are at the top of `scripts/big_frog.gd`, and player health, stamina, sprint speed and how fast they come back at the top of `scripts/player.gd`. A weapon is a tool item with an `attack` value in `scripts/items.gd`.
 
 The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window once a player has discovered everything it takes and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
 

@@ -1,6 +1,6 @@
 extends SceneTree
-## Checks player health and the Big Frog without a network: taking damage,
-## dying, health coming back, the frog chasing and biting players nearby and
+## Checks player health, stamina and the Big Frog without a network: taking
+## damage, dying, health coming back, sprinting and attacking using stamina, the frog chasing and biting players nearby and
 ## leaving far ones alone, and a wood sword killing it in two hits. Run from
 ## the project folder:
 ##   godot --headless --path . -s tests/test_combat.gd
@@ -43,6 +43,7 @@ func _run() -> void:
 	_check(loaded, "the player and frog scripts load")
 	if loaded:
 		await _check_player_health(players)
+		await _check_stamina(players)
 		await _check_frog(world, players)
 
 	world.queue_free()
@@ -77,6 +78,58 @@ func _check_player_health(players: Node3D) -> void:
 	_check(player.health == 0, "the dead don't heal")
 	player.restore_health()
 	_check(player.health == Player.MAX_HEALTH, "back to full health after dying")
+	player.queue_free()
+	await process_frame
+
+
+func _check_stamina(players: Node3D) -> void:
+	var player := _add_player(players, "6", Vector3(-30.0, 0.0, 0.0))
+	await physics_frame
+	var input: Node = player.get_node("PlayerInput")
+	_check(player.stamina == Player.MAX_STAMINA, "a player starts with full stamina")
+
+	# Attacks cost stamina, and can't be paid for once it's low.
+	_check(player.spend_stamina(Player.ATTACK_STAMINA) and player.stamina == Player.MAX_STAMINA - Player.ATTACK_STAMINA,
+		"an attack uses %d stamina" % Player.ATTACK_STAMINA)
+	player.stamina = Player.ATTACK_STAMINA - 1.0
+	_check(not player.spend_stamina(Player.ATTACK_STAMINA) and player.stamina == Player.ATTACK_STAMINA - 1.0,
+		"can't attack without enough stamina")
+
+	# Sprinting is faster and burns stamina while moving.
+	player.stamina = Player.MAX_STAMINA
+	input.direction = Vector2(0.0, -1.0)
+	input.sprinting = true
+	player._physics_process(0.5)
+	_check(is_equal_approx(Vector2(player.velocity.x, player.velocity.z).length(), Player.SPRINT_SPEED),
+		"sprinting runs at %.1f (%.2f)" % [Player.SPRINT_SPEED, Vector2(player.velocity.x, player.velocity.z).length()])
+	_check(is_equal_approx(player.stamina, Player.MAX_STAMINA - Player.SPRINT_STAMINA * 0.5),
+		"sprinting uses stamina (%.1f)" % player.stamina)
+	input.direction = Vector2.ZERO
+	player._physics_process(0.5)
+	_check(is_equal_approx(player.stamina, Player.MAX_STAMINA - Player.SPRINT_STAMINA * 0.5),
+		"standing still with sprint held uses none")
+
+	# Run dry and sprinting stops, until it has come back a bit.
+	input.direction = Vector2(0.0, -1.0)
+	player._physics_process(Player.MAX_STAMINA / Player.SPRINT_STAMINA)
+	_check(player.stamina == 0.0, "sprinting can run stamina out")
+	player._physics_process(0.1)
+	_check(not player.is_sprinting() and is_equal_approx(Vector2(player.velocity.x, player.velocity.z).length(), Player.SPEED),
+		"out of stamina, back to a normal run")
+	_check(player.stamina == 0.0, "stamina doesn't come back straight after using it")
+	input.sprinting = false
+	player._since_tired = Player.STAMINA_REGEN_DELAY
+	player._physics_process(0.2)
+	_check(player.stamina > 0.0 and player.stamina < Player.SPRINT_RECOVER, "stamina comes back after a moment (%.1f)" % player.stamina)
+	input.sprinting = true
+	_check(not player.is_sprinting(), "can't sprint again straight away")
+	input.sprinting = false
+	player._physics_process(Player.MAX_STAMINA / Player.STAMINA_REGEN)
+	_check(player.stamina == Player.MAX_STAMINA, "stamina comes back to full within a few seconds")
+	input.sprinting = true
+	_check(player.is_sprinting(), "and sprinting works again")
+	input.walking = true
+	_check(not player.is_sprinting(), "walking isn't sprinting")
 	player.queue_free()
 	await process_frame
 

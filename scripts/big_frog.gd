@@ -242,6 +242,8 @@ func _request_hit(yaw) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_swing.get(peer, -100000) < int(SWING_SECONDS * 1000.0 * 0.8):
 		return
+	if not body.spend_stamina(body.ATTACK_STAMINA):
+		return
 	_last_swing[peer] = now
 	if gap_to(body.global_position) > SERVER_REACH:
 		body.swing(float(yaw))

@@ -121,6 +121,10 @@ func _swing() -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_swing < int(Harvestables.SWING_SECONDS * 1000.0):
 		return
+	# Attacking takes stamina; without enough the swing doesn't happen (the
+	# server checks too).
+	if Items.is_weapon(Session.held_item) and player.stamina < player.ATTACK_STAMINA:
+		return
 	_last_swing = now
 	var yaw: float = player.get_node("PlayerInput").yaw
 	var enemy := _enemy_target()
