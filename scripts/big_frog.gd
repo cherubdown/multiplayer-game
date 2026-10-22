@@ -16,8 +16,9 @@ extends CharacterBody3D
 ## It's solid to the ground, trees and rocks, and stops against players, but
 ## players can walk through it, so it can never pin anyone in place.
 ##
-## The model is a few shapes built in code, like the characters, so there's
-## nothing to import.
+## The model is a few chunky shapes built in code and hand painted by the
+## characters' shader (see scripts/character_model.gd), so there's nothing to
+## import.
 
 const CharacterModel := preload("res://scripts/character_model.gd")
 const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
@@ -281,25 +282,42 @@ func _build_model() -> void:
 	_model = Node3D.new()
 	_model.name = "Model"
 	add_child(_model)
-	var skin := _material(Color(0.32, 0.55, 0.2))
-	var belly := _material(Color(0.78, 0.8, 0.5))
-	var dark := _material(Color(0.08, 0.08, 0.06))
-	var spots := _material(Color(0.2, 0.38, 0.12))
-	# Faces -Z, like the players.
-	_add(_ellipsoid(Vector3(0.75, 0.5, 0.85)), skin, Vector3(0.0, 0.55, 0.05), Vector3(deg_to_rad(-12.0), 0.0, 0.0))
-	_add(_ellipsoid(Vector3(0.62, 0.32, 0.7)), belly, Vector3(0.0, 0.38, -0.05))
-	_add(_ellipsoid(Vector3(0.6, 0.3, 0.45)), skin, Vector3(0.0, 0.75, -0.55))
-	# A wide mouth across the front of the head.
-	_add(_box(Vector3(0.9, 0.04, 0.05)), dark, Vector3(0.0, 0.66, -0.97))
+	var Paint := CharacterModel
+	var skin := Paint.paint(Paint.WARTY, Color(0.34, 0.48, 0.2))
+	var belly := Paint.paint(Paint.SKIN, Color(0.82, 0.8, 0.52))
+	var gold := Paint.paint(Paint.METAL, Color(0.95, 0.7, 0.18))
+	var dark := Paint.paint(Paint.SKIN, Color(0.1, 0.07, 0.06))
+	var mouth := Paint.paint(Paint.SKIN, Color(0.55, 0.22, 0.2))
+	# Faces -Z, like the players. A squat, chunky body with a huge head.
+	_add(_ellipsoid(Vector3(0.78, 0.52, 0.85)), skin, Vector3(0.0, 0.55, 0.08), Vector3(deg_to_rad(-12.0), 0.0, 0.0))
+	_add(_ellipsoid(Vector3(0.66, 0.34, 0.72)), belly, Vector3(0.0, 0.36, -0.05))
+	_add(_ellipsoid(Vector3(0.66, 0.34, 0.5)), skin, Vector3(0.0, 0.76, -0.55))
+	# A pale throat pouch under a wide, grumpy mouth with a thick lip.
+	_add(_ellipsoid(Vector3(0.5, 0.2, 0.32)), belly, Vector3(0.0, 0.5, -0.72))
+	_add(_ellipsoid(Vector3(0.62, 0.06, 0.2)), mouth, Vector3(0.0, 0.66, -0.88))
+	_add(_ellipsoid(Vector3(0.6, 0.1, 0.16)), skin, Vector3(0.0, 0.72, -0.86), Vector3(deg_to_rad(-8.0), 0.0, 0.0))
+	# Ridges down the back.
 	for side in [-1.0, 1.0]:
-		_add(_ellipsoid(Vector3(0.18, 0.18, 0.18)), skin, Vector3(0.32 * side, 1.0, -0.6))
-		_add(_ellipsoid(Vector3(0.1, 0.1, 0.06)), dark, Vector3(0.36 * side, 1.04, -0.74))
-		# Folded back legs and little front legs.
-		_add(_ellipsoid(Vector3(0.28, 0.24, 0.5)), skin, Vector3(0.62 * side, 0.3, 0.4))
-		_add(_ellipsoid(Vector3(0.22, 0.06, 0.32)), skin, Vector3(0.7 * side, 0.05, 0.1))
-		_add(_box(Vector3(0.12, 0.35, 0.12)), skin, Vector3(0.42 * side, 0.2, -0.55))
-		_add(_ellipsoid(Vector3(0.12, 0.08, 0.1)), spots, Vector3(0.3 * side, 0.85, 0.3))
-	_add(_ellipsoid(Vector3(0.14, 0.08, 0.12)), spots, Vector3(0.0, 0.95, 0.0))
+		_add(_ellipsoid(Vector3(0.09, 0.08, 0.6)), skin, Vector3(0.3 * side, 1.0, 0.05), Vector3(deg_to_rad(-14.0), 0.0, 0.0))
+		# Big bulging eyes: a lump of skin, a gold eye with a flat black
+		# pupil, and a glint.
+		_add(_ellipsoid(Vector3(0.22, 0.2, 0.22)), skin, Vector3(0.34 * side, 1.0, -0.58))
+		_add(_ellipsoid(Vector3(0.17, 0.17, 0.12)), gold, Vector3(0.37 * side, 1.05, -0.72), Vector3(0.0, deg_to_rad(18.0 * side), 0.0))
+		_add(_ellipsoid(Vector3(0.11, 0.05, 0.05)), dark, Vector3(0.38 * side, 1.05, -0.82), Vector3(0.0, deg_to_rad(18.0 * side), 0.0))
+		_add(_ellipsoid(Vector3(0.03, 0.03, 0.02)), Paint.paint(Paint.SKIN, Color(1.0, 0.98, 0.9)), Vector3(0.34 * side, 1.1, -0.84))
+		# A heavy brow over each eye.
+		_add(_ellipsoid(Vector3(0.2, 0.06, 0.12)), skin, Vector3(0.34 * side, 1.17, -0.66), Vector3(0.0, 0.0, deg_to_rad(14.0 * side)))
+		# Thick folded back legs with big webbed feet.
+		_add(_ellipsoid(Vector3(0.3, 0.27, 0.52)), skin, Vector3(0.64 * side, 0.32, 0.42))
+		_add(_ellipsoid(Vector3(0.18, 0.12, 0.38)), skin, Vector3(0.74 * side, 0.12, 0.1))
+		for toe in 3:
+			var spread := deg_to_rad((toe - 1) * 22.0 + 10.0 * side)
+			_add(_ellipsoid(Vector3(0.07, 0.04, 0.2)), skin, Vector3(0.74 * side + sin(spread) * 0.2, 0.04, -0.2 - cos(spread) * 0.08), Vector3(0.0, -spread, 0.0))
+		# Stubby front legs with splayed fingers.
+		_add(_ellipsoid(Vector3(0.1, 0.22, 0.1)), skin, Vector3(0.44 * side, 0.22, -0.6), Vector3(0.0, 0.0, deg_to_rad(-12.0 * side)))
+		for toe in 3:
+			var spread := deg_to_rad((toe - 1) * 30.0 + 15.0 * side)
+			_add(_ellipsoid(Vector3(0.05, 0.035, 0.13)), skin, Vector3(0.48 * side + sin(spread) * 0.1, 0.03, -0.68 - cos(spread) * 0.08), Vector3(0.0, -spread, 0.0))
 
 	var label := Label3D.new()
 	label.name = "Nameplate"
@@ -339,21 +357,10 @@ func _ellipsoid(radii: Vector3) -> Mesh:
 	var sphere := SphereMesh.new()
 	sphere.radius = 1.0
 	sphere.height = 2.0
-	sphere.radial_segments = 12
-	sphere.rings = 6
+	# Few sides, for the same chunky look as the characters.
+	sphere.radial_segments = 8
+	sphere.rings = 4
 	var st := SurfaceTool.new()
 	st.append_from(sphere, 0, Transform3D(Basis.from_scale(radii), Vector3.ZERO))
 	return st.commit()
 
-
-func _box(size: Vector3) -> Mesh:
-	var box := BoxMesh.new()
-	box.size = size
-	return box
-
-
-func _material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.6
-	return material

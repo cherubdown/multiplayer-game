@@ -22,6 +22,7 @@ const int LEATHER = 3;
 const int HAIR = 4;
 const int METAL = 5;
 const int ROPE = 6;
+const int WARTY = 7;
 
 uniform int pattern = 0;
 uniform vec3 base_color : source_color = vec3(0.8);
@@ -204,6 +205,22 @@ void fragment() {
 		color = mix(color, mix(shade_color, color, 0.5), twist * 0.5 + 0.5);
 		color = mix(color, light_color, smoothstep(0.7, 1.0, twist) * smoothstep(0.5, 0.9, lit) * 0.5);
 		rough = 0.95;
+	}
+
+	if (pattern == WARTY) {
+		// Wet, mottled amphibian hide: dark blotches and painted warts, lit
+		// on top and shadowed beneath.
+		float mottle = fbm(p * 6.0);
+		color = mix(color, shade_color, smoothstep(0.5, 0.75, mottle) * 0.45);
+		float blotch = smoothstep(0.6, 0.66, fbm(p * 3.0 + vec3(11.0)));
+		color = mix(color, shade_color * 0.55, blotch * 0.8);
+		vec3 cell = floor(p * 12.0);
+		vec3 at = fract(p * 12.0) - 0.5;
+		float wart = step(0.55, hash(cell)) * (1.0 - smoothstep(0.12, 0.3, length(at)));
+		color = mix(color, light_color, wart * smoothstep(-0.1, 0.25, at.y) * 0.55);
+		color = mix(color, shade_color * 0.7, wart * smoothstep(0.05, -0.2, at.y) * 0.45);
+		color = mix(color, light_color, smoothstep(0.8, 0.95, lit) * 0.2);
+		rough = 0.62;
 	}
 
 	if (face) {
