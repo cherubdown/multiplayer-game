@@ -40,7 +40,7 @@ const FOOT_SCALE := 1.35
 
 const PAINTED_SHADER := preload("res://shaders/hand_painted.gdshader")
 ## The patterns the shader paints (see shaders/hand_painted.gdshader).
-enum { SKIN, LINEN, WOOL, LEATHER, HAIR, METAL, ROPE }
+enum { SKIN, LINEN, WOOL, LEATHER, HAIR, METAL, ROPE, WARTY }
 
 const SHIRT_COLOR := Color(0.8, 0.74, 0.6)
 const TRIM_COLOR := Color(0.5, 0.2, 0.15)
@@ -186,9 +186,9 @@ func _build_body() -> void:
 	var b := _body
 	var info: Dictionary = Races.INFO[race]
 	var skin := _skin_material()
-	var shirt := _paint(LINEN, SHIRT_COLOR)
-	var trim := _paint(LINEN, TRIM_COLOR)
-	var pants := _paint(WOOL, PANTS_COLOR)
+	var shirt := paint(LINEN, SHIRT_COLOR)
+	var trim := paint(LINEN, TRIM_COLOR)
+	var pants := paint(WOOL, PANTS_COLOR)
 	var torso: float = b["torso"]
 	var chest: Vector2 = b["chest"]
 	var waist: Vector2 = b["waist"]
@@ -221,8 +221,8 @@ func _build_body() -> void:
 	_add(hips, _band(-leg_r * 0.85, -leg_r * 0.68, flare * 1.03, belly * 0.3), trim)
 	# A rope belt knotted at the side, its ends hanging.
 	var belt := top * 1.12
-	_add(hips, _band(belt_y - 0.016, belt_y + 0.016, belt, belly * 0.45), _paint(ROPE, ROPE_COLOR, Vector3.RIGHT))
-	var rope := _paint(ROPE, ROPE_COLOR)
+	_add(hips, _band(belt_y - 0.016, belt_y + 0.016, belt, belly * 0.45), paint(ROPE, ROPE_COLOR, Vector3.RIGHT))
+	var rope := paint(ROPE, ROPE_COLOR)
 	var knot := Vector3(belt.x * 0.55, belt_y, -(belt.y + belly * 0.45) * 0.93)
 	_add(hips, _ellipsoid(Vector3(0.03, 0.026, 0.024)), rope, knot)
 	for end in [-1.0, 1.0]:
@@ -255,7 +255,7 @@ func _build_body() -> void:
 	var neck_r: float = b["neck_r"]
 	_add(neck, _loft([[-b["neck"] * 0.6, neck_r, neck_r, neck_r], [b["neck"] + b["head"] * 0.5, neck_r * 0.92, neck_r * 0.92, neck_r * 0.92]]), skin)
 	var head := _joint("Head", "Neck", Vector3(0.0, b["neck"], 0.0))
-	_build_head(head, skin, _paint(HAIR, info["hair_color"]))
+	_build_head(head, skin, paint(HAIR, info["hair_color"]))
 
 	for side in ["L", "R"]:
 		var s := -1.0 if side == "L" else 1.0
@@ -296,7 +296,7 @@ func _build_leg(side: String, s: float, skin: Material, pants: Material) -> void
 	var ankle := maxf(b["leg"] * 0.06, r * 0.6)
 	var thigh: float = (b["leg"] - ankle) * 0.5
 	var shin := thigh
-	var wraps := _paint(LINEN, WRAP_COLOR, Vector3.RIGHT)
+	var wraps := paint(LINEN, WRAP_COLOR, Vector3.RIGHT)
 
 	var upper := _joint("Leg_" + side, "Hips", Vector3(b["hips"] * s, 0.0, 0.0))
 	_add(upper, _loft([[r * 0.6, r * 0.95, r * 0.95, r * 0.95], [-thigh, r * 0.76, r * 0.76, r * 0.76]]), pants)
@@ -311,13 +311,13 @@ func _build_leg(side: String, s: float, skin: Material, pants: Material) -> void
 		[-shin - ankle * 0.4, r * 0.66, r * 0.7, r * 0.66],
 	]), wraps)
 	for k in 3:
-		_add(lower, _band(-shin * (0.48 + k * 0.17) - 0.007, -shin * (0.48 + k * 0.17) + 0.007, Vector2(r * 0.68, r * 0.7), 0.0), _paint(LEATHER, SOLE_COLOR))
+		_add(lower, _band(-shin * (0.48 + k * 0.17) - 0.007, -shin * (0.48 + k * 0.17) + 0.007, Vector2(r * 0.68, r * 0.7), 0.0), paint(LEATHER, SOLE_COLOR))
 
 	# Big wrapped feet.
 	var foot := _joint("Foot_" + side, "Shin_" + side, Vector3(0.0, -shin, 0.0))
 	var f := r * FOOT_SCALE
 	_add(foot, _ellipsoid(Vector3(f * 0.55, ankle * 0.6, f * 1.2)), wraps, Vector3(0.0, -ankle * 0.45, -f * 0.5))
-	_add(foot, _ellipsoid(Vector3(f * 0.5, ankle * 0.3, f * 1.15)), _paint(LEATHER, SOLE_COLOR), Vector3(0.0, -ankle * 0.85, -f * 0.5))
+	_add(foot, _ellipsoid(Vector3(f * 0.5, ankle * 0.3, f * 1.15)), paint(LEATHER, SOLE_COLOR), Vector3(0.0, -ankle * 0.85, -f * 0.5))
 
 
 func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
@@ -342,7 +342,7 @@ func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
 		for s in [-1.0, 1.0]:
 			_add(head, _ellipsoid(Vector3(0.46, 0.15, 0.22) * r), skin, Vector3(0.36 * s, 1.3, -0.86) * r, Vector3(0.0, 0.0, deg_to_rad(16.0 * s)))
 		_add(head, _ellipsoid(Vector3(0.28, 0.19, 0.22) * r), skin, Vector3(0.0, 0.8, -0.98) * r)
-		var tusk := _paint(SKIN, TUSK_COLOR)
+		var tusk := paint(SKIN, TUSK_COLOR)
 		for s in [-1.0, 1.0]:
 			var cone := CylinderMesh.new()
 			cone.top_radius = 0.0
@@ -374,7 +374,7 @@ func _build_head(head: Node3D, skin: Material, hair: Material) -> void:
 
 func _build_hair(head: Node3D, r: float, hair: Material) -> void:
 	var style: String = _body["hair"]
-	var tie := _paint(LEATHER, PANTS_COLOR)
+	var tie := paint(LEATHER, PANTS_COLOR)
 	if style == "topknot":
 		# Bald but for a knot on the crown.
 		_add(head, _ellipsoid(Vector3(0.28, 0.32, 0.28) * r), hair, Vector3(0.0, 2.27, 0.25) * r)
@@ -402,7 +402,7 @@ func _build_hair(head: Node3D, r: float, hair: Material) -> void:
 		"bun":
 			_add(head, _ellipsoid(Vector3(0.48, 0.45, 0.45) * r), hair, Vector3(0.0, 1.75, 0.85) * r)
 		"braids":
-			var gold := _paint(METAL, GOLD_COLOR)
+			var gold := paint(METAL, GOLD_COLOR)
 			for s in [-1.0, 1.0]:
 				_add(head, _loft([[0.0, 0.18 * r, 0.18 * r, 0.18 * r], [-1.5 * r, 0.12 * r, 0.12 * r, 0.12 * r]], true, true, 6), hair, Vector3(0.82 * s, 0.85, -0.05) * r, Vector3(deg_to_rad(12.0), 0.0, deg_to_rad(6.0 * s)))
 				_add(head, _ellipsoid(Vector3(0.17, 0.07, 0.17) * r), gold, Vector3(0.95 * s, -0.45, -0.32) * r)
@@ -415,7 +415,7 @@ func _build_beard(head: Node3D, r: float, hair: Material) -> void:
 	var wedge := PrismMesh.new()
 	wedge.size = Vector3(1.4, 1.3, 0.5) * r
 	_add(head, wedge, hair, Vector3(0.0, -0.38, -0.72) * r, Vector3(deg_to_rad(-10.0), 0.0, PI))
-	var gold := _paint(METAL, GOLD_COLOR)
+	var gold := paint(METAL, GOLD_COLOR)
 	for s in [-1.0, 1.0]:
 		_add(head, _ellipsoid(Vector3(0.36, 0.11, 0.14) * r), hair, Vector3(0.22 * s, 0.6, -0.95) * r, Vector3(0.0, 0.0, deg_to_rad(-18.0 * s)))
 		_add(head, _loft([[0.0, 0.12 * r, 0.12 * r, 0.12 * r], [-0.6 * r, 0.09 * r, 0.09 * r, 0.09 * r]], true, true, 6), hair, Vector3(0.2 * s, -0.78, -0.8) * r, Vector3(deg_to_rad(-12.0), 0.0, deg_to_rad(6.0 * s)))
@@ -651,10 +651,11 @@ func _band(y0: float, y1: float, size: Vector2, belly: float) -> ArrayMesh:
 	return _loft([[y0] + ring, [y1] + ring], true, true, BODY_SEGMENTS)
 
 
-## The shared hand-painted material for a pattern in a color. The shade and
+## The shared hand-painted material for a pattern in a color, also used by
+## the Big Frog (scripts/big_frog.gd). The shade and
 ## light are painted in hue-shifted, the way an illustrator would: shadows
 ## cooler and richer, lights warmer.
-static func _paint(pattern: int, color: Color, grain := Vector3.UP) -> ShaderMaterial:
+static func paint(pattern: int, color: Color, grain := Vector3.UP) -> ShaderMaterial:
 	var key := "%d %s %s" % [pattern, color, grain]
 	if not _materials.has(key):
 		var material := ShaderMaterial.new()
@@ -670,7 +671,7 @@ static func _paint(pattern: int, color: Color, grain := Vector3.UP) -> ShaderMat
 
 
 func _skin_material() -> ShaderMaterial:
-	return _paint(SKIN, Races.INFO[race]["skin"])
+	return paint(SKIN, Races.INFO[race]["skin"])
 
 
 ## The skin of the head, with this race and sex's face painted on.
