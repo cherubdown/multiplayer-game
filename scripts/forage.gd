@@ -77,7 +77,7 @@ const TREE_VISIBLE := 220.0
 const FADE_LENGTH := 10.0
 ## How far the glints over things on the ground are seen (the shader fades
 ## each one out before this, see shaders/sparkle.gdshader).
-const SPARKLE_VISIBLE := 30.0
+const SPARKLE_VISIBLE := 50.0
 ## Meters per side of the regions plants are drawn in. Every plant in a region
 ## that shares a mesh is drawn together, in one MultiMesh.
 const REGION := 128.0

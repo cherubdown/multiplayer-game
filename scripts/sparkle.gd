@@ -22,5 +22,5 @@ static func mesh() -> Mesh:
 		_mesh.material = material
 		# The shader moves the glint around the item and turns it to the
 		# camera, so leave room for that when culling.
-		_mesh.custom_aabb = AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
+		_mesh.custom_aabb = AABB(Vector3(-0.6, -0.6, -0.6), Vector3.ONE * 1.2)
 	return _mesh
