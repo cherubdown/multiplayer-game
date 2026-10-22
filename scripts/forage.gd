@@ -21,6 +21,7 @@ extends Node3D
 const WorldGen := preload("res://scripts/world_gen.gd")
 const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 const Items := preload("res://scripts/items.gd")
+const Sparkle := preload("res://scripts/sparkle.gd")
 const Biome := WorldGen.Biome
 
 ## Meters per side of the grid cells plants are scattered in. At most one
@@ -74,6 +75,9 @@ const TRUNK_LAYER := 2
 const SMALL_VISIBLE := 90.0
 const TREE_VISIBLE := 220.0
 const FADE_LENGTH := 10.0
+## How far the glints over things on the ground are seen (the shader fades
+## each one out before this, see shaders/sparkle.gdshader).
+const SPARKLE_VISIBLE := 30.0
 ## Meters per side of the regions plants are drawn in. Every plant in a region
 ## that shares a mesh is drawn together, in one MultiMesh.
 const REGION := 128.0
@@ -386,6 +390,10 @@ func _build_plants(surface_height: Callable) -> void:
 				parts = [["mushrooms", "Body", Vector3.ZERO]]
 			_:
 				parts = [[spot["kind"], "Body", Vector3.ZERO]]
+		if spot["kind"] in ["mushroom", "branches", "loose_stones"]:
+			# Things lying on the ground glint, so they stand out from the
+			# scenery (see scripts/sparkle.gd).
+			parts.append(["sparkle", "Sparkle", Vector3.UP * Sparkle.HEIGHT])
 		for part in parts:
 			if not regions[key].has(part[0]):
 				regions[key][part[0]] = []
@@ -407,6 +415,7 @@ func _build_plants(surface_height: Callable) -> void:
 ## transform] in `placed`, positioned relative to `center`.
 func _make_instances(mesh_name: String, placed: Array, center: Vector3) -> MultiMeshInstance3D:
 	var tree := mesh_name == "apple_tree"
+	var sparkle := mesh_name == "sparkle"
 	var multimesh := MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.mesh = _mesh(mesh_name, TREE_VISIBLE if tree else SMALL_VISIBLE)
@@ -425,12 +434,14 @@ func _make_instances(mesh_name: String, placed: Array, center: Vector3) -> Multi
 	# Each plant fades out on its own (see _material); this just stops drawing
 	# whole regions once every plant in them has faded.
 	instance.visibility_range_end = (TREE_VISIBLE if tree else SMALL_VISIBLE) + REGION * 0.75
+	if sparkle:
+		instance.visibility_range_end = SPARKLE_VISIBLE + REGION * 0.75
 	if not tree:
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return instance
 
 
-## Whether a part of a drawn plant ("Body", "Fruit" or "Apple0".."Apple5") is
+## Whether a part of a drawn plant ("Body", "Fruit", "Sparkle" or "Apple0".."Apple5") is
 ## showing.
 func is_shown(index: int, part: String) -> bool:
 	if not _parts.has(index) or not _parts[index].has(part):
@@ -456,6 +467,7 @@ func _show(index: int) -> void:
 	match spots[index]["kind"]:
 		"mushroom", "branches", "loose_stones":
 			_set_shown(index, "Body", have > 0)
+			_set_shown(index, "Sparkle", have > 0)
 		"apple_tree":
 			for n in spots[index]["picks"]:
 				_set_shown(index, "Apple%d" % n, n < have)
@@ -471,6 +483,8 @@ static func _mesh(mesh_name: String, fade_end: float) -> Mesh:
 		return _meshes[key]
 	var mesh := ArrayMesh.new()
 	match mesh_name:
+		"sparkle":
+			return Sparkle.mesh()
 		"mushrooms":
 			# A little cluster of brown caps on pale stems.
 			var stems := []

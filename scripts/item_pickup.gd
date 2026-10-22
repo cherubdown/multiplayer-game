@@ -6,6 +6,7 @@ extends Node3D
 ## pickup once it's all gone.
 
 const Items := preload("res://scripts/items.gd")
+const Sparkle := preload("res://scripts/sparkle.gd")
 
 ## Server side: everything here was picked up, just before it's removed.
 signal taken
@@ -26,6 +27,7 @@ var world: Node
 func _ready() -> void:
 	add_to_group("interactable")
 	$Mesh.mesh = Items.mesh(item)
+	$Sparkle.mesh = Sparkle.mesh()
 	_update_label()
 
 
