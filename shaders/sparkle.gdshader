@@ -4,8 +4,8 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 // A glint over something that can be picked up (see scripts/sparkle.gd): a
 // little four-pointed star, painted in two flat tones like the rest of the
 // art, that flares up now and then at a new spot around the item and fades
-// again. Between glints it shrinks to nothing, so it costs almost nothing to
-// draw, and a whole region of them is one MultiMesh (see scripts/forage.gd).
+// back to a small, softly pulsing star. It's one quad drawn unshaded, and a
+// whole region of them is one MultiMesh (see scripts/forage.gd).
 //
 // Every glint is worked out here from the time and where the item lies, so
 // nothing is updated from script and no two items blink together.
@@ -13,15 +13,15 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 uniform vec3 color : source_color = vec3(1.0, 0.88, 0.55);
 uniform vec3 core_color : source_color = vec3(1.0, 0.98, 0.9);
 // Meters across at its brightest.
-uniform float size = 0.16;
+uniform float size = 0.4;
 // Seconds between one item's glints, and how much of that it's showing.
-uniform float period = 3.0;
-uniform float shown = 0.22;
+uniform float period = 1.8;
+uniform float shown = 0.45;
 // How far around the item a glint can appear, in meters.
 uniform vec3 spread = vec3(0.22, 0.16, 0.22);
 // Glints fade out between these distances from the camera.
-uniform float fade_start = 22.0;
-uniform float fade_end = 30.0;
+uniform float fade_start = 40.0;
+uniform float fade_end = 50.0;
 
 varying float glint;
 
@@ -38,7 +38,10 @@ void vertex() {
 	// apart instead of falling into step.
 	float t = TIME / (period * (0.8 + 0.4 * seed)) + seed * 13.0;
 	float cycle = fract(t) / shown;
-	glint = cycle < 1.0 ? sin(cycle * PI) : 0.0;
+	// Between flares a small star stays lit, gently pulsing, so every item
+	// is marked all the time.
+	float idle = 0.35 + 0.1 * sin(TIME * 3.0 + seed * TAU);
+	glint = max(cycle < 1.0 ? sin(cycle * PI) : 0.0, idle);
 	float n = floor(t);
 	vec3 at = origin + (vec3(hash(vec3(n, seed, 1.0)), hash(vec3(seed, n, 2.0)), hash(vec3(3.0, n, seed))) * 2.0 - 1.0) * spread * scale;
 	glint *= 1.0 - smoothstep(fade_start, fade_end, distance(at, CAMERA_POSITION_WORLD));
@@ -49,13 +52,21 @@ void vertex() {
 }
 
 void fragment() {
-	// A star with four thin points, and a brighter heart.
+	// A star with four thin points and a brighter heart, in a faint round
+	// halo so it reads against bright ground too.
+	// The resting star is small but still bright enough to catch the eye.
+	float bright = min(glint * 1.8, 1.0);
 	vec2 p = abs(UV - 0.5) * 2.0;
 	float star = 1.0 - (sqrt(p.x) + sqrt(p.y));
 	if (star < 0.0) {
-		discard;
+		if (length(p) > 0.42) {
+			discard;
+		}
+		ALBEDO = color;
+		ALPHA = 0.35 * bright;
+	} else {
+		bool heart = star > 0.4;
+		ALBEDO = heart ? core_color : color;
+		ALPHA = bright;
 	}
-	bool heart = star > 0.45;
-	ALBEDO = heart ? core_color : color;
-	ALPHA = (heart ? 1.0 : 0.7) * glint;
 }
