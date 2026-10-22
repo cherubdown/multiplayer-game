@@ -236,6 +236,10 @@ func _check_foraging(world: Node, player: Node3D) -> void:
 	await _walk_to(player, world.terrain.gen.spawn_point(PI, 3.0))
 	var index := -1
 	for i in forage.spots.size():
+		# Only food: wood or stone here could unlock recipes that
+		# _check_crafting expects to still be locked.
+		if forage.spots[i]["kind"] in ["branches", "loose_stones"]:
+			continue
 		if forage.picks_left(i) > 0 and (index < 0 or forage.spots[i]["position"].distance_to(player.global_position)
 				< forage.spots[index]["position"].distance_to(player.global_position)) \
 				and _path_clear(world, player.global_position, forage.spots[i]["position"], -1):
