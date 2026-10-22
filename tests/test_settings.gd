@@ -45,14 +45,10 @@ func _run() -> void:
 	_check(settings.get_value("display/fullscreen") == false, "a broken settings file falls back to defaults")
 
 	# The options window.
-	_check(options.button != null and options.button.text == "Options", "has an Options button")
-	var rect: Rect2 = options.button.get_global_rect()
-	var screen: Vector2 = root.get_visible_rect().size
-	_check(rect.position.x == options.MARGIN and is_equal_approx(rect.end.y, screen.y - options.MARGIN),
-		"the button sits in the bottom left corner")
+	_check(options.find_child("OptionsButton", true, false) == null, "no Options button of its own on screen")
 	_check(not options.is_open(), "the window starts closed")
-	options.button.pressed.emit()
-	_check(options.is_open(), "the button opens the window")
+	options.open()
+	_check(options.is_open(), "opens the window")
 	var toggle: CheckButton = options.control_for("display/fullscreen")
 	_check(toggle != null and not toggle.button_pressed, "shows a full screen toggle in its current state")
 	toggle.button_pressed = true

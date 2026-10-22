@@ -92,7 +92,7 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 ## Options
 
-The **Options** button in the bottom left corner opens the options window from any screen: the Host / Join menu, login, character select, and in the world (press Esc first to free the mouse). For now it has one setting, **Full screen** on the Display tab. Changes take effect straight away and are saved on your PC in `settings.cfg` in the same user data folder as above, so they stick between launches. Esc or **Close** shuts the window.
+The **Options** button opens the options window. It is on the Host / Join menu and, once you're in the world, on the Esc menu next to **Quit game**. For now it has one setting, **Full screen** on the Display tab. Changes take effect straight away and are saved on your PC in `settings.cfg` in the same user data folder as above, so they stick between launches. Esc or **Close** shuts the window.
 
 To add a setting, declare it in `DEFINITIONS` in `scripts/settings.gd` (a toggle, slider or choice, with its tab, label and default). The options window builds its tabs and controls from that list, so it shows up there and saves without further work; add a line to `_apply()` if it needs to change something in the engine.
 

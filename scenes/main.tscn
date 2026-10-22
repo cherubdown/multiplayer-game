@@ -80,6 +80,12 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Join"
 
+[node name="OptionsButton" type="Button" parent="Center/Panel/Margin/VBox/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Settings such as full screen"
+text = "Options"
+
 [node name="QuitButton" type="Button" parent="Center/Panel/Margin/VBox/Menu"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -228,6 +234,12 @@ text = "Character select"
 unique_name_in_owner = true
 layout_mode = 2
 text = "Leave"
+
+[node name="LobbyOptionsButton" type="Button" parent="Center/Panel/Margin/VBox/Lobby"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Settings such as full screen"
+text = "Options"
 
 [node name="QuitGameButton" type="Button" parent="Center/Panel/Margin/VBox/Lobby"]
 unique_name_in_owner = true
