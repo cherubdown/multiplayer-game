@@ -287,6 +287,9 @@ func _request_swing(index, yaw) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_swing.get(peer, -100000) < int(SWING_SECONDS * 1000.0 * 0.8):
 		return
+	# Swinging a weapon is an attack, which takes stamina; tools don't.
+	if Items.is_weapon(held) and not body.spend_stamina(body.ATTACK_STAMINA):
+		return
 	_last_swing[peer] = now
 	var target: bool = index >= 0 and index < spots.size() and not felled.has(index) \
 		and gap_to(index, body.global_position) <= SERVER_REACH

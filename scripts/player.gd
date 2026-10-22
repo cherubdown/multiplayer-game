@@ -14,6 +14,13 @@ extends CharacterBody3D
 ## the character for a while. At 0 the character dies and the world brings
 ## them back at the spawn with full health (see scripts/test_world.gd). Health
 ## is saved with the character when they leave (see Session).
+##
+## Every character also has stamina, which the server owns the same way and
+## replicates for the local player's bar under their health. Sprinting (held
+## Shift) burns it while moving, and every swing of a weapon costs a chunk of
+## it (see spend_stamina()). It comes back quickly a moment after it was last
+## used. With none left the character can't sprint or attack, and once it runs
+## dry sprinting stays off until it has come back a little.
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
@@ -24,6 +31,7 @@ const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
 
 const SPEED := 5.0
 const WALK_SPEED := 2.0
+const SPRINT_SPEED := 8.0
 const JUMP_VELOCITY := 4.5
 const TURN_SPEED := 10.0
 ## Health when full, and that a new character starts with.
@@ -32,6 +40,17 @@ const MAX_HEALTH := 50
 ## per point of health it gets back.
 const REGEN_DELAY := 10.0
 const REGEN_SECONDS := 2.0
+## Stamina when full. Sprinting burns SPRINT_STAMINA a second (5 seconds from
+## full), and a weapon swing costs ATTACK_STAMINA. It comes back at
+## STAMINA_REGEN a second (about 3 seconds from empty), starting
+## STAMINA_REGEN_DELAY seconds after it was last used. After running dry,
+## sprinting waits until it's back to SPRINT_RECOVER.
+const MAX_STAMINA := 100.0
+const SPRINT_STAMINA := 20.0
+const ATTACK_STAMINA := 15.0
+const STAMINA_REGEN := 35.0
+const STAMINA_REGEN_DELAY := 0.8
+const SPRINT_RECOVER := 25.0
 
 ## Every peer: health went from `old` to `new` (see `health`).
 signal health_changed(new: int, old: int)
@@ -69,6 +88,11 @@ signal died(by: String)
 		if health != old:
 			health_changed.emit(health, old)
 
+## Set by the server and replicated whenever it changes.
+@export var stamina := MAX_STAMINA:
+	set(value):
+		stamina = clampf(value, 0.0, MAX_STAMINA)
+
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 ## Above other players' heads, under their name.
 var _health_bar: HealthBar3D
@@ -76,6 +100,10 @@ var _health_bar: HealthBar3D
 ## next point of health back.
 var _since_hurt := 0.0
 var _regen := 0.0
+## Server side: seconds since stamina was last used, and whether it ran dry
+## and sprinting is waiting for it to come back.
+var _since_tired := STAMINA_REGEN_DELAY
+var _winded := false
 
 
 func _enter_tree() -> void:
@@ -147,6 +175,27 @@ func restore_health() -> void:
 	health = MAX_HEALTH
 	_since_hurt = 0.0
 	_regen = 0.0
+	stamina = MAX_STAMINA
+	_winded = false
+
+
+## Server side: uses `amount` stamina for an action, such as an attack.
+## Returns false, using none, if there isn't that much left.
+func spend_stamina(amount: float) -> bool:
+	if stamina < amount:
+		return false
+	stamina -= amount
+	_since_tired = 0.0
+	if stamina <= 0.0:
+		_winded = true
+	return true
+
+
+## Whether the character is sprinting right now: Shift held while moving at a
+## run, with stamina to spare. Server side, where the input is replicated to.
+func is_sprinting() -> bool:
+	return input.sprinting and not input.walking and not _winded and stamina > 0.0 \
+		and input.direction.length_squared() > 0.0
 
 
 @rpc("authority", "call_local", "unreliable")
@@ -181,6 +230,19 @@ func _physics_process(delta: float) -> void:
 			_regen -= REGEN_SECONDS
 			health += 1
 
+	var sprinting := is_sprinting()
+	if sprinting:
+		stamina -= SPRINT_STAMINA * delta
+		_since_tired = 0.0
+		if stamina <= 0.0:
+			_winded = true
+	else:
+		_since_tired += delta
+		if _since_tired >= STAMINA_REGEN_DELAY and stamina < MAX_STAMINA:
+			stamina += STAMINA_REGEN * delta
+	if _winded and stamina >= SPRINT_RECOVER:
+		_winded = false
+
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
@@ -191,7 +253,7 @@ func _physics_process(delta: float) -> void:
 	var dir := Vector3(input.direction.x, 0.0, input.direction.y).rotated(Vector3.UP, input.yaw)
 	if dir.length_squared() > 0.0:
 		dir = dir.normalized() * minf(input.direction.length(), 1.0)
-		var speed := WALK_SPEED if input.walking else SPEED
+		var speed := WALK_SPEED if input.walking else SPRINT_SPEED if sprinting else SPEED
 		velocity.x = dir.x * speed
 		velocity.z = dir.z * speed
 		var target_yaw := atan2(-dir.x, -dir.z)

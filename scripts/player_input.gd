@@ -10,6 +10,8 @@ const MOUSE_SENSITIVITY := 0.003
 @export var yaw := 0.0
 ## Held walk key: move slowly instead of running.
 @export var walking := false
+## Held sprint key: run faster, using stamina (see Player).
+@export var sprinting := false
 ## Camera pitch, local only.
 var pitch := -0.3
 
@@ -27,9 +29,11 @@ func _process(_delta: float) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		direction = Vector2.ZERO
 		walking = false
+		sprinting = false
 		return
 	direction = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	walking = Input.is_action_pressed("walk")
+	sprinting = Input.is_action_pressed("sprint")
 	if Input.is_action_just_pressed("jump"):
 		jump.rpc_id(1)
 

@@ -355,6 +355,8 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 	# The frog may already have had a go at us if we passed it gathering.
 	_check(hud != null and hud.health_text() == "%d / 50" % player.health,
 		"the health bar shows %d / 50 (%s)" % [player.health, hud.health_text() if hud else ""])
+	_check(hud != null and hud.stamina_text() == "%d / 100" % ceili(player.stamina),
+		"the stamina bar shows %d / 100 (%s)" % [ceili(player.stamina), hud.stamina_text() if hud else ""])
 	_check("wood_sword" in session.recipes, "finding wood unlocks the wood sword recipe")
 	while _count(session.inventory, "wood") < 5:
 		var pickup := _nearest_pickup(world, player, "wood")
@@ -420,6 +422,12 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 		while is_instance_valid(frog) and frog.health == before and Time.get_ticks_msec() < deadline:
 			await process_frame
 		_check(is_instance_valid(frog) and frog.health == before - 10, "a wood sword hit takes 10 off (%d left)" % [frog.health if is_instance_valid(frog) else -1])
+		if hit == 0:
+			# The swing cost stamina, which then comes back.
+			deadline = Time.get_ticks_msec() + 500
+			while player.stamina >= player.MAX_STAMINA and Time.get_ticks_msec() < deadline:
+				await process_frame
+			_check(player.stamina < player.MAX_STAMINA, "attacking uses stamina (%.1f)" % player.stamina)
 		await create_timer(frog.SWING_SECONDS).timeout
 	_check(not is_instance_valid(frog) or frog.health == 0, "two hits kill the Big Frog")
 	await create_timer(1.5).timeout
