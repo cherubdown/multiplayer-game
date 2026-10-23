@@ -1,16 +1,20 @@
 extends CharacterBody3D
-## The Big Frog: the island's first enemy. It sits by its home spot, hopping
-## about now and then, until a player comes close. Then it hops after them and
-## bites, taking DAMAGE health per bite, until they get away (it won't follow
-## further than LEASH from home) or one of them dies. Hitting it with a weapon
-## (see scripts/items.gd) takes the weapon's attack off its 20 health, and it
-## goes after whoever hit it.
+## The Big Frog: the island's first enemy, and a tough one. Frogs live in a
+## few patches of the Meadows (see WorldGen.frog_areas()). Each sits by its
+## home spot, hopping about now and then, until a player comes close. Then it
+## hops after them and bites, taking DAMAGE health per bite, until they get
+## away (it won't follow further than LEASH from home) or one of them dies.
+## From further off, up to LICK_RANGE away, it lashes out its long tongue every
+## LICK_SECONDS: a lick stings for LICK_DAMAGE and poisons the player, who then
+## loses POISON_DAMAGE health every second for POISON_SECONDS (see
+## Player.poison()). Hitting it with a weapon (see scripts/items.gd) takes the
+## weapon's attack off its 120 health, and it goes after whoever hit it.
 ##
 ## Server-authoritative like the players: the server runs the frog and
 ## replicates where it is, which way it faces and its health to every peer
 ## through ServerSynchronizer, and plays its hops, bites and hurts on every
 ## peer. The world spawns it through a MultiplayerSpawner, so it shows up for
-## everyone, and brings a new one back a while after it dies (see
+## everyone, and a new one turns up in each frog area every hour (see
 ## scripts/test_world.gd).
 ##
 ## It's solid to the ground, trees and rocks, and stops against players, but
@@ -25,14 +29,22 @@ const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
 const Items := preload("res://scripts/items.gd")
 
 const DISPLAY_NAME := "Big Frog"
-const MAX_HEALTH := 20
+const MAX_HEALTH := 120
 ## Health one bite takes off a player, and seconds between bites.
-const DAMAGE := 5
+const DAMAGE := 10
 const BITE_SECONDS := 1.8
 ## How close a player has to come before the frog notices them, and how far
 ## from home it will chase them.
-const AGGRO_RANGE := 6.0
-const LEASH := 14.0
+const AGGRO_RANGE := 10.0
+const LEASH := 20.0
+## The lick: how far from the frog's edge its tongue reaches, seconds between
+## licks, and the health a lick takes straight away. Then the player is
+## poisoned for POISON_SECONDS, losing POISON_DAMAGE health every second.
+const LICK_RANGE := 8.0
+const LICK_SECONDS := 5.0
+const LICK_DAMAGE := 2
+const POISON_SECONDS := 8.0
+const POISON_DAMAGE := 2
 ## How far it wanders from home when nobody's about.
 const WANDER := 2.5
 ## Hops: how fast and high, and seconds between them while chasing and while
@@ -55,7 +67,7 @@ const CALM_SECONDS := 8.0
 ## Seconds it lies there after dying before it's gone.
 const DEATH_SECONDS := 1.0
 
-## Server side: the frog died. The world brings a new one back later.
+## Server side: the frog died.
 signal killed
 
 ## Replicated: health left, and set by the server.
@@ -70,15 +82,22 @@ signal killed
 ## Server side: the world, for finding players; where the frog lives.
 var world: Node
 var home := Vector3.ZERO
+## Server side: which of the world's frog areas it lives in (-1 for none).
+var area := -1
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 ## Server side: the player being chased, or null.
 var _target: Node3D
 var _hop_in := 1.0
 var _bite_in := 0.0
+var _lick_in := 0.0
 var _calm_for := 0.0
 var _last_swing := {}  # peer -> Time.get_ticks_msec() of their last swing at the frog
 var _model: Node3D
+## The tongue, hidden in the mouth until a lick: the pink part, and its
+## poisonous tip.
+var _tongue: Node3D
+var _tongue_tip: Node3D
 var _health_bar: HealthBar3D
 
 
@@ -154,6 +173,7 @@ func _physics_process(delta: float) -> void:
 func _think(delta: float) -> void:
 	_hop_in -= delta
 	_bite_in -= delta
+	_lick_in -= delta
 	_calm_for -= delta
 	var was_chasing := _target != null
 	_target = _pick_target() if _calm_for <= 0.0 else null
@@ -162,16 +182,21 @@ func _think(delta: float) -> void:
 			# Spotted someone: no more lazing about.
 			_hop_in = minf(_hop_in, CHASE_HOP_SECONDS)
 		_face(_target.global_position)
-		if gap_to(_target.global_position) <= BITE_REACH + 0.5:
+		var gap := gap_to(_target.global_position)
+		if gap <= BITE_REACH + 0.5:
 			if _bite_in <= 0.0:
 				_bite_in = BITE_SECONDS
 				_play_bite.rpc()
-				var fatal: bool = _target.health <= DAMAGE
-				_target.take_damage(DAMAGE, "a " + DISPLAY_NAME)
-				if fatal:
-					# They come back at the spawn; leave them be for a bit.
-					_target = null
-					_calm_for = CALM_SECONDS
+				_hurt_target(DAMAGE)
+		elif gap <= LICK_RANGE and _lick_in <= 0.0:
+			_lick_in = LICK_SECONDS
+			# Sit still while the tongue is out.
+			_hop_in = maxf(_hop_in, 0.6)
+			_play_lick.rpc(gap + RADIUS)
+			var target := _target
+			_hurt_target(LICK_DAMAGE)
+			if target.health > 0:
+				target.poison(POISON_SECONDS, POISON_DAMAGE, "a %s's poison" % DISPLAY_NAME)
 		elif _hop_in <= 0.0:
 			_hop_towards(_target.global_position, CHASE_HOP_SECONDS)
 		return
@@ -183,6 +208,16 @@ func _think(delta: float) -> void:
 	else:
 		var spot := home + Vector3(randf_range(-WANDER, WANDER), 0.0, randf_range(-WANDER, WANDER))
 		_hop_towards(spot, randf_range(IDLE_HOP_SECONDS.x, IDLE_HOP_SECONDS.y))
+
+
+## Server side: takes `amount` off the player being chased. If that kills
+## them, they come back at the spawn; it leaves them be for a bit.
+func _hurt_target(amount: int) -> void:
+	var fatal: bool = _target.health <= amount
+	_target.take_damage(amount, "a " + DISPLAY_NAME)
+	if fatal:
+		_target = null
+		_calm_for = CALM_SECONDS
 
 
 ## The player to go after: whoever it's already chasing while they're still
@@ -272,6 +307,28 @@ func _play_bite() -> void:
 	tween.tween_property(_model, "position:z", 0.0, 0.25)
 
 
+## Shoots the tongue out `reach` meters from the frog's middle and back.
+@rpc("authority", "call_local", "unreliable")
+func _play_lick(reach) -> void:
+	if _tongue == null or not (reach is float or reach is int):
+		return
+	var length := maxf(float(reach) - 0.85, 0.3)
+	var tween := create_tween()
+	tween.tween_callback(func() -> void: _tongue.visible = true)
+	tween.tween_method(_set_tongue, 0.05, length, 0.12)
+	tween.tween_interval(0.08)
+	tween.tween_method(_set_tongue, length, 0.05, 0.22)
+	tween.tween_callback(func() -> void: _tongue.visible = false)
+
+
+## Stretches the tongue `length` meters out of the mouth.
+func _set_tongue(length: float) -> void:
+	var pink := _tongue.get_child(0) as Node3D
+	pink.scale.z = length
+	pink.position.z = -length * 0.5
+	_tongue_tip.position.z = -length
+
+
 @rpc("authority", "call_local", "unreliable")
 func _play_hurt() -> void:
 	if _model != null:
@@ -321,6 +378,19 @@ func _build_model() -> void:
 			var spread := deg_to_rad((toe - 1) * 30.0 + 15.0 * side)
 			_add(_ellipsoid(Vector3(0.05, 0.035, 0.13)), skin, Vector3(0.48 * side + sin(spread) * 0.1, 0.03, -0.68 - cos(spread) * 0.08), Vector3(0.0, -spread, 0.0))
 
+	# The tongue, rolled up in the mouth until it licks (see _play_lick()).
+	# The pink part is a meter long at scale 1 and stretched to reach.
+	_tongue = Node3D.new()
+	_tongue.name = "Tongue"
+	_tongue.position = Vector3(0.0, 0.64, -0.85)
+	_tongue.visible = false
+	_model.add_child(_tongue)
+	var tongue_paint := Paint.paint(Paint.SKIN, Color(0.85, 0.36, 0.42))
+	var pink := _add(_ellipsoid(Vector3(0.08, 0.035, 0.5)), tongue_paint, Vector3.ZERO, Vector3.ZERO, _tongue)
+	pink.scale.z = 0.05
+	_tongue_tip = _add(_ellipsoid(Vector3(0.14, 0.08, 0.12)), Paint.paint(Paint.SKIN, Color(0.55, 0.85, 0.2)),
+		Vector3.ZERO, Vector3.ZERO, _tongue)
+
 	var label := Label3D.new()
 	label.name = "Nameplate"
 	label.text = DISPLAY_NAME
@@ -346,13 +416,14 @@ func _show_dead() -> void:
 		_model.position.y = 1.1
 
 
-func _add(mesh: Mesh, material: Material, at: Vector3, turn := Vector3.ZERO) -> void:
+func _add(mesh: Mesh, material: Material, at: Vector3, turn := Vector3.ZERO, parent: Node3D = null) -> MeshInstance3D:
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
 	instance.material_override = material
 	instance.position = at
 	instance.rotation = turn
-	_model.add_child(instance)
+	(parent if parent != null else _model).add_child(instance)
+	return instance
 
 
 func _ellipsoid(radii: Vector3) -> Mesh:

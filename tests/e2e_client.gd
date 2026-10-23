@@ -11,8 +11,8 @@ extends SceneTree
 ## picks it up again, puts it in the test chest and takes it back, picks food
 ## off the nearest plant, checks the stone axe recipe stays locked until wood
 ## and stone have both been found and is announced when it unlocks, gathers
-## wood and stone to craft a stone axe, crafts a wood sword and fights the
-## test Big Frog with it (getting bitten, and killing it in two hits), chops
+## wood and stone to craft a stone axe, crafts a wood sword, checks a Big
+## Frog lives in each frog area of the Meadows, chops
 ## down the nearest tree with the axe and picks up its wood, and checks
 ## the inventory, discovered recipes and health are still there after
 ## re-entering the world, and that the
@@ -347,8 +347,8 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 		_check(_count(session.inventory, "wood") == wood + amount, "picks up the tree's %d wood" % amount)
 
 
-## Gathers wood for a wood sword, crafts it, holds it, walks up to the test
-## Big Frog, lets it bite a couple of times, then kills it in two hits.
+## Gathers wood for a wood sword, crafts it and holds it, and checks there's a
+## Big Frog in each frog area of the Meadows, at full health.
 func _check_fighting(world: Node, player: Node3D) -> void:
 	var session: Node = root.get_node("Session")
 	var hud: Node = null
@@ -356,7 +356,6 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 		if child.has_method("health_text"):
 			hud = child
 	_check(hud != null, "there is a health bar on screen")
-	# The frog may already have had a go at us if we passed it gathering.
 	_check(hud != null and hud.health_text() == "%d / 50" % player.health,
 		"the health bar shows %d / 50 (%s)" % [player.health, hud.health_text() if hud else ""])
 	_check(hud != null and hud.stamina_text() == "%d / 100" % ceili(player.stamina),
@@ -384,58 +383,21 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 	await create_timer(0.3).timeout
 	_check(player.held_item == "wood_sword", "everyone sees the wood sword in hand")
 
+	# Big Frogs live out in their areas of the Meadows, one in each when the
+	# world starts, too tough to take on with a wood sword in this test.
+	var areas: Array[Vector3] = world.terrain.gen.frog_areas()
 	var frogs: Array = world.get_node("Enemies").get_children()
-	_check(frogs.size() == 1, "there is a Big Frog by the spawn (%d)" % frogs.size())
-	if frogs.is_empty():
-		return
-	var frog: Node3D = frogs[0]
-	_check(frog.health == 20, "the Big Frog has 20 health")
-	# Walk up to it; it comes to meet us once we're close.
-	var input: Node = player.get_node("PlayerInput")
-	input.set_process(false)
-	var deadline := Time.get_ticks_msec() + 15000
-	while is_instance_valid(frog) and frog.gap_to(player.global_position) > frog.REACH - 0.4 \
-			and Time.get_ticks_msec() < deadline:
-		var offset: Vector3 = frog.global_position - player.global_position
-		input.yaw = atan2(-offset.x, -offset.z)
-		input.direction = Vector2(0.0, -1.0)
-		await physics_frame
-	input.direction = Vector2.ZERO
-	_check(is_instance_valid(frog) and frog.gap_to(player.global_position) <= frog.REACH,
-		"walks up to the Big Frog (%.1f m)" % [frog.gap_to(player.global_position) if is_instance_valid(frog) else -1.0])
-	var bitten := []
-	var on_hurt := func(new: int, old: int) -> void:
-		if new < old:
-			bitten.append(old - new)
-	player.health_changed.connect(on_hurt)
-	deadline = Time.get_ticks_msec() + 8000
-	while bitten.size() < 2 and Time.get_ticks_msec() < deadline:
-		await process_frame
-	player.health_changed.disconnect(on_hurt)
-	_check(bitten.size() >= 2 and bitten.all(func(n: int) -> bool: return n == 5),
-		"the Big Frog bites for 5 at a time (%s, health %d)" % [bitten, player.health])
-	await create_timer(0.2).timeout
-	_check(hud != null and hud.health_text() == "%d / 50" % player.health, "the health bar shows it (%s)" % [hud.health_text() if hud else ""])
-	for hit in 2:
-		if not is_instance_valid(frog):
-			break
-		var before: int = frog.health
-		var offset: Vector3 = frog.global_position - player.global_position
-		frog.attack(atan2(-offset.x, -offset.z))
-		deadline = Time.get_ticks_msec() + 2000
-		while is_instance_valid(frog) and frog.health == before and Time.get_ticks_msec() < deadline:
-			await process_frame
-		_check(is_instance_valid(frog) and frog.health == before - 10, "a wood sword hit takes 10 off (%d left)" % [frog.health if is_instance_valid(frog) else -1])
-		if hit == 0:
-			# The swing cost stamina, which then comes back.
-			deadline = Time.get_ticks_msec() + 500
-			while player.stamina >= player.MAX_STAMINA and Time.get_ticks_msec() < deadline:
-				await process_frame
-			_check(player.stamina < player.MAX_STAMINA, "attacking uses stamina (%.1f)" % player.stamina)
-		await create_timer(frog.SWING_SECONDS).timeout
-	_check(not is_instance_valid(frog) or frog.health == 0, "two hits kill the Big Frog")
-	await create_timer(1.5).timeout
-	_check(world.get_node("Enemies").get_child_count() == 0, "the dead Big Frog goes away")
+	_check(frogs.size() == areas.size() and areas.size() > 0,
+		"there is a Big Frog in each of the %d frog areas (%d)" % [areas.size(), frogs.size()])
+	for frog: Node3D in frogs:
+		var nearest := INF
+		for at in areas:
+			nearest = minf(nearest, Vector2(frog.global_position.x - at.x, frog.global_position.z - at.z).length())
+		_check(nearest < world.terrain.gen.FROG_AREA_RADIUS + frog.WANDER * 2.0 + 1.0,
+			"a Big Frog sits in its area (%.1f m from the middle)" % nearest)
+		_check(frog.health == 120, "the Big Frog has 120 health (%d)" % frog.health)
+		_check(Vector2(frog.global_position.x, frog.global_position.z).length() > 30.0,
+			"the Big Frog is well away from the spawn")
 
 
 ## The nearest test item or dropped stack of `item`, or null.

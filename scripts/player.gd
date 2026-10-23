@@ -15,6 +15,10 @@ extends CharacterBody3D
 ## them back at the spawn with full health (see scripts/test_world.gd). Health
 ## is saved with the character when they leave (see Session).
 ##
+## Some enemies poison (see poison()): a poisoned character loses a little
+## health every POISON_TICK seconds until it wears off, which everyone sees
+## through `poisoned`. Dying or coming back cures it.
+##
 ## Every character also has stamina, which the server owns the same way and
 ## replicates for the local player's bar under their health. Sprinting (held
 ## Shift) burns it while moving, and every swing of a weapon costs a chunk of
@@ -40,6 +44,8 @@ const MAX_HEALTH := 50
 ## per point of health it gets back.
 const REGEN_DELAY := 10.0
 const REGEN_SECONDS := 2.0
+## Seconds between the health a poison takes.
+const POISON_TICK := 1.0
 ## Stamina when full. Sprinting burns SPRINT_STAMINA a second (5 seconds from
 ## full), and a weapon swing costs ATTACK_STAMINA. It comes back at
 ## STAMINA_REGEN a second (about 3 seconds from empty), starting
@@ -88,6 +94,10 @@ signal died(by: String)
 		if health != old:
 			health_changed.emit(health, old)
 
+## Whether the character is poisoned. Set by the server (see poison()) and
+## replicated whenever it changes.
+@export var poisoned := false
+
 ## Set by the server and replicated whenever it changes.
 @export var stamina := MAX_STAMINA:
 	set(value):
@@ -104,6 +114,12 @@ var _regen := 0.0
 ## and sprinting is waiting for it to come back.
 var _since_tired := STAMINA_REGEN_DELAY
 var _winded := false
+## Server side: the poison: seconds left, seconds to its next tick, health
+## each tick takes, and what to name for a death by it.
+var _poison_left := 0.0
+var _poison_tick := 0.0
+var _poison_damage := 0
+var _poison_by := ""
 
 
 func _enter_tree() -> void:
@@ -164,6 +180,7 @@ func take_damage(amount: int, by: String) -> bool:
 	_regen = 0.0
 	_play_hurt.rpc()
 	if health <= 0:
+		_cure()
 		print("%s was killed by %s" % [character_name, by])
 		_announce_death.rpc(by)
 		killed.emit(by)
@@ -177,6 +194,28 @@ func restore_health() -> void:
 	_regen = 0.0
 	stamina = MAX_STAMINA
 	_winded = false
+	_cure()
+
+
+## Server side: poisons the character for `seconds`, taking `damage` health
+## every POISON_TICK seconds. `by` names it, should it kill them. Poisoned
+## again before it wears off, it lasts `seconds` from then, not longer.
+## Returns whether it took (not after the character has died).
+func poison(seconds: float, damage: int, by: String) -> bool:
+	if health <= 0 or seconds <= 0.0 or damage <= 0:
+		return false
+	if not poisoned:
+		_poison_tick = POISON_TICK
+	_poison_left = maxf(_poison_left, seconds)
+	_poison_damage = damage
+	_poison_by = by
+	poisoned = true
+	return true
+
+
+func _cure() -> void:
+	_poison_left = 0.0
+	poisoned = false
 
 
 ## Server side: uses `amount` stamina for an action, such as an attack.
@@ -222,6 +261,15 @@ func _process(_delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return
+
+	if poisoned:
+		_poison_left -= delta
+		_poison_tick -= delta
+		if _poison_tick <= 0.0:
+			_poison_tick += POISON_TICK
+			take_damage(_poison_damage, _poison_by)
+		if _poison_left <= 0.0:
+			_cure()
 
 	_since_hurt += delta
 	if health < MAX_HEALTH and health > 0 and _since_hurt >= REGEN_DELAY:
