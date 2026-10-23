@@ -18,6 +18,12 @@ const SIZE := 1024.0
 const SEA_LEVEL := 0.0
 ## Players spawn within this distance of the center, which is always Meadows.
 const MEADOWS_RADIUS := 140.0
+## Big Frogs live in a few patches of the Meadows (see frog_areas()): how
+## many, how wide, and how far they keep from the spawn and from each other.
+const FROG_AREA_COUNT := 5
+const FROG_AREA_RADIUS := 8.0
+const FROG_AREA_MIN_DISTANCE := 45.0
+const FROG_AREA_SPACING := 40.0
 
 const BIOME_NAMES := {
 	Biome.OCEAN: "Ocean",
@@ -132,6 +138,34 @@ func spawn_point(angle: float, radius: float = 4.0) -> Vector3:
 	var x := cos(angle) * radius
 	var z := sin(angle) * radius
 	return Vector3(x, height_at(x, z), z)
+
+
+## Where Big Frogs live: FROG_AREA_COUNT spots on dry Meadows ground, each
+## the middle of an area FROG_AREA_RADIUS across, well away from the spawn and
+## from each other. Random for each world but the same every time for the
+## same seed.
+func frog_areas() -> Array[Vector3]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_number ^ 0x46524F47  # "FROG"
+	var areas: Array[Vector3] = []
+	for attempt in 400:
+		if areas.size() >= FROG_AREA_COUNT:
+			break
+		var angle := rng.randf() * TAU
+		var distance := rng.randf_range(FROG_AREA_MIN_DISTANCE, MEADOWS_RADIUS - FROG_AREA_RADIUS)
+		var x := cos(angle) * distance
+		var z := sin(angle) * distance
+		var h := height_at(x, z)
+		if biome_for(x, z, h) != Biome.MEADOWS or h < SEA_LEVEL + 1.0:
+			continue
+		var crowded := false
+		for other in areas:
+			if Vector2(other.x - x, other.z - z).length() < FROG_AREA_SPACING:
+				crowded = true
+				break
+		if not crowded:
+			areas.append(Vector3(x, h, z))
+	return areas
 
 
 ## -1 (deep ocean) to 1 (highest land). Guarantees an island: always land in

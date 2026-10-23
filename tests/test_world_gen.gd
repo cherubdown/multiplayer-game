@@ -1,5 +1,5 @@
 extends SceneTree
-## Checks the world generator without a network. Run from the project folder:
+## Checks the world generator (and where Big Frogs live) without a network. Run from the project folder:
 ##   godot --headless --path . -s tests/test_world_gen.gd
 ## Exits non-zero if any check fails.
 
@@ -76,6 +76,22 @@ func _check_world(gen: WorldGen) -> void:
 	var edge := WorldGen.SIZE * 0.5 - 1.0
 	_check(gen.biome_at(edge, 0.0) == WorldGen.Biome.OCEAN and gen.biome_at(0.0, -edge) == WorldGen.Biome.OCEAN,
 		"seed \"%s\" is surrounded by ocean" % gen.seed_text)
+
+	# Big Frogs live in a few spread out patches of the Meadows, away from the
+	# spawn, the same every time for the seed.
+	var areas := gen.frog_areas()
+	_check(areas.size() == WorldGen.FROG_AREA_COUNT, "seed \"%s\" has %d frog areas (%d)" % [gen.seed_text,
+		WorldGen.FROG_AREA_COUNT, areas.size()])
+	var areas_ok := true
+	for i in areas.size():
+		var at := areas[i]
+		var from_spawn := Vector2(at.x, at.z).length()
+		areas_ok = areas_ok and gen.biome_at(at.x, at.z) == WorldGen.Biome.MEADOWS and at.y > WorldGen.SEA_LEVEL \
+			and from_spawn >= WorldGen.FROG_AREA_MIN_DISTANCE
+		for j in i:
+			areas_ok = areas_ok and Vector2(at.x - areas[j].x, at.z - areas[j].z).length() >= WorldGen.FROG_AREA_SPACING
+	_check(areas_ok, "seed \"%s\" puts its frog areas in the Meadows, apart and away from the spawn: %s" % [gen.seed_text, areas])
+	_check(WorldGen.new(gen.seed_text).frog_areas() == areas, "seed \"%s\" always has the same frog areas" % gen.seed_text)
 
 
 ## Plants grow from the seed, the same on every peer, with grass around the

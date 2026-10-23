@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## What's always on screen while playing: the local player's health bar in the
 ## bottom left corner with their stamina bar under it, a red flash when they're hurt, and a notice when they
-## die. Added to the world on every peer that has a player (not a dedicated
+## die. While they're poisoned the health bar and the flash turn green. Added to the world on every peer that has a player (not a dedicated
 ## server). Only shows what the server replicates on the player (see
 ## scripts/player.gd).
 
@@ -9,10 +9,15 @@ const Player := preload("res://scripts/player.gd")
 
 ## Seconds the death notice stays up.
 const DEATH_NOTICE_SECONDS := 4.0
+const HEALTH_COLOR := Color(0.8, 0.14, 0.12)
+const POISONED_COLOR := Color(0.38, 0.72, 0.16)
+const HURT_FLASH := Color(0.8, 0.0, 0.0, 0.25)
+const POISON_FLASH := Color(0.3, 0.75, 0.05, 0.25)
 
 var _panel: PanelContainer
 var _bar: ProgressBar
 var _value: Label
+var _health_title: Label
 var _stamina_bar: ProgressBar
 var _stamina_value: Label
 var _flash: ColorRect
@@ -34,6 +39,7 @@ func _process(_delta: float) -> void:
 		_show_player(player)
 	if _player != null:
 		_set_stamina(_player.stamina)
+		_set_poisoned(_player.poisoned)
 
 
 ## The text of the health bar, such as "42 / 50", or "" when it's hidden.
@@ -44,6 +50,11 @@ func health_text() -> String:
 ## The text of the stamina bar, such as "80 / 100", or "" when it's hidden.
 func stamina_text() -> String:
 	return _stamina_value.text if _panel.visible else ""
+
+
+## Whether the health bar shows the player poisoned.
+func shows_poisoned() -> bool:
+	return _panel.visible and _health_title.text == "Poison"
 
 
 ## The death notice showing, or "" if there isn't one.
@@ -78,6 +89,15 @@ func _set_health(health: int) -> void:
 	_value.text = "%d / %d" % [health, Player.MAX_HEALTH]
 
 
+func _set_poisoned(poisoned: bool) -> void:
+	var title := "Poison" if poisoned else "Health"
+	if _health_title.text == title:
+		return
+	_health_title.text = title
+	(_bar.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = POISONED_COLOR if poisoned else HEALTH_COLOR
+	_flash.color = POISON_FLASH if poisoned else HURT_FLASH
+
+
 func _set_stamina(stamina: float) -> void:
 	_stamina_bar.value = stamina
 	_stamina_value.text = "%d / %d" % [ceili(stamina), Player.MAX_STAMINA]
@@ -108,7 +128,7 @@ func _on_died(by: String) -> void:
 func _build() -> void:
 	_flash = ColorRect.new()
 	_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_flash.color = Color(0.8, 0.0, 0.0, 0.25)
+	_flash.color = HURT_FLASH
 	_flash.modulate.a = 0.0
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_flash)
@@ -131,8 +151,8 @@ func _build() -> void:
 	_panel.add_child(rows)
 	_bar = ProgressBar.new()
 	_value = Label.new()
-	_add_bar(rows, "Health", _bar, _value, Player.MAX_HEALTH,
-			Color(0.8, 0.14, 0.12), Color(0.15, 0.05, 0.05, 0.9))
+	_health_title = _add_bar(rows, "Health", _bar, _value, Player.MAX_HEALTH,
+			HEALTH_COLOR, Color(0.15, 0.05, 0.05, 0.9))
 	_stamina_bar = ProgressBar.new()
 	_stamina_value = Label.new()
 	_add_bar(rows, "Stamina", _stamina_bar, _stamina_value, Player.MAX_STAMINA,
@@ -153,9 +173,9 @@ func _build() -> void:
 
 
 ## A row in the corner panel: `title`, then `bar` filled in `color` up to
-## `max_value`, then `value` for the numbers.
+## `max_value`, then `value` for the numbers. Returns the title's label.
 func _add_bar(rows: VBoxContainer, title: String, bar: ProgressBar, value: Label,
-		max_value: float, color: Color, back_color: Color) -> void:
+		max_value: float, color: Color, back_color: Color) -> Label:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	rows.add_child(row)
@@ -182,3 +202,4 @@ func _add_bar(rows: VBoxContainer, title: String, bar: ProgressBar, value: Label
 	value.custom_minimum_size.x = 64
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(value)
+	return label
