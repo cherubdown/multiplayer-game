@@ -19,6 +19,10 @@ uniform float period = 1.8;
 uniform float shown = 0.45;
 // How far around the item a glint can appear, in meters.
 uniform vec3 spread = vec3(0.22, 0.16, 0.22);
+// A one-off flare, 0 to 1, set per item from script: a freshly dropped item
+// (see scripts/item_pickup.gd) shines big and bright right over itself while
+// it lands, settling back to its usual glints as this goes back to 0.
+instance uniform float burst = 0.0;
 // Glints fade out between these distances from the camera.
 uniform float fade_start = 40.0;
 uniform float fade_end = 50.0;
@@ -44,9 +48,12 @@ void vertex() {
 	glint = max(cycle < 1.0 ? sin(cycle * PI) : 0.0, idle);
 	float n = floor(t);
 	vec3 at = origin + (vec3(hash(vec3(n, seed, 1.0)), hash(vec3(seed, n, 2.0)), hash(vec3(3.0, n, seed))) * 2.0 - 1.0) * spread * scale;
+	// A flare sits right on the item, bright and up to two and a half times as big.
+	at = mix(at, origin, burst);
+	glint = max(glint, burst);
 	glint *= 1.0 - smoothstep(fade_start, fade_end, distance(at, CAMERA_POSITION_WORLD));
 	// Face the camera, growing with the glint.
-	vec2 corner = (UV - 0.5) * vec2(1.0, -1.0) * size * scale * glint;
+	vec2 corner = (UV - 0.5) * vec2(1.0, -1.0) * size * scale * glint * (1.0 + 1.5 * burst);
 	vec3 world = at + INV_VIEW_MATRIX[0].xyz * corner.x + INV_VIEW_MATRIX[1].xyz * corner.y;
 	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(world, 1.0);
 }

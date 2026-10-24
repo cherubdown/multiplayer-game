@@ -13,7 +13,7 @@ extends RefCounted
 ## scripts/big_frog.gd).
 
 const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple",
-	"wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"]
+	"frog_meat", "frog_bile", "wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"]
 
 const INFO := {
 	"wood": {
@@ -64,6 +64,20 @@ const INFO := {
 		"max_stack": 50,
 		"color": Color(0.8, 0.12, 0.1),
 		"shape": "apple",
+	},
+	"frog_meat": {
+		"name": "Frog Meat",
+		"description": "A slab of rubbery meat from a Big Frog. Every frog you kill drops some.",
+		"max_stack": 50,
+		"color": Color(0.86, 0.5, 0.46),
+		"shape": "meat",
+	},
+	"frog_bile": {
+		"name": "Frog Bile",
+		"description": "A vial of a Big Frog's poisonous bile. Only some frogs have any worth taking.",
+		"max_stack": 50,
+		"color": Color(0.55, 0.85, 0.2),
+		"shape": "vial",
 	},
 	"wood_sword": {
 		"name": "Wood Sword",
@@ -148,6 +162,19 @@ const ICONS := {
 		<path d="M32 20 C32 14 34 10 37 7" fill="none" stroke="#5a3415" stroke-width="3" stroke-linecap="round"/>
 		<path d="M35 14 C40 8 48 9 50 12 C45 15 40 15 35 14 Z" fill="#4fa548" stroke="#1f4d1c" stroke-width="1.5"/>
 		<path d="M18 28 C19 24 22 22 25 22" fill="none" stroke="#ff9a8a" stroke-width="3" stroke-linecap="round"/>
+	</svg>""",
+	"frog_meat": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M10 34 C8 20 24 10 40 14 C54 17 60 30 54 42 C48 54 28 56 18 50 C12 46 11 40 10 34 Z" fill="#d9786e" stroke="#6e2a24" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M18 32 C24 24 36 22 46 26 M20 42 C28 36 40 36 50 38" fill="none" stroke="#f2b2a6" stroke-width="3" stroke-linecap="round"/>
+		<ellipse cx="44" cy="44" rx="6" ry="4" fill="#f4ead6" stroke="#8a7a5e" stroke-width="2"/>
+	</svg>""",
+	"frog_bile": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<rect x="26" y="6" width="12" height="8" rx="2" fill="#8a5a2e" stroke="#3b220e" stroke-width="2"/>
+		<path d="M27 14 H37 V24 C48 28 52 38 48 48 C44 58 20 58 16 48 C12 38 16 28 27 24 Z" fill="#cfe9e2" stroke="#2c4a44" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M17 40 C24 36 40 36 47 40 C48 46 46 52 40 54 C32 57 22 56 19 50 C17 47 16 44 17 40 Z" fill="#8fd630" stroke="#3f6a12" stroke-width="2"/>
+		<circle cx="28" cy="46" r="2.5" fill="#d8ff8a"/>
+		<circle cx="38" cy="49" r="1.8" fill="#d8ff8a"/>
+		<path d="M22 30 C21 34 20 36 20 38" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
 	</svg>""",
 	"wood_sword": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
 		<path d="M28 34 L52 8 L58 6 L56 12 L30 36 Z" fill="#b07a44" stroke="#4a2c12" stroke-width="2.5" stroke-linejoin="round"/>
@@ -281,6 +308,16 @@ static func mesh(item: String) -> Mesh:
 			sphere.radius = 0.12
 			sphere.height = 0.22
 			result = sphere
+		"meat":
+			var slab := SphereMesh.new()
+			slab.radius = 0.18
+			slab.height = 0.16
+			result = slab
+		"vial":
+			var vial := CapsuleMesh.new()
+			vial.radius = 0.07
+			vial.height = 0.26
+			result = vial
 		_:
 			var box := BoxMesh.new()
 			box.size = Vector3.ONE * 0.3
