@@ -21,6 +21,7 @@ Network="*res://scripts/network.gd"
 Session="*res://scripts/session.gd"
 Settings="*res://scripts/settings.gd"
 OptionsMenu="*res://scripts/options_menu.gd"
+UiSounds="*res://scripts/ui_sounds.gd"
 
 [input]
 

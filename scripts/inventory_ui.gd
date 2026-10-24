@@ -14,6 +14,8 @@ extends CanvasLayer
 ## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
 ## with a weapon at the enemy in reach (see scripts/big_frog.gd).
 ## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
+## Opening and closing the inventory rustles the bag (the chest has its own
+## sounds, and UiSounds the rest, see scripts/ui_sounds.gd).
 ## All of it only sends requests: the server owns every inventory (see Session
 ## and scripts/chest.gd).
 
@@ -21,6 +23,7 @@ const Items := preload("res://scripts/items.gd")
 const Recipes := preload("res://scripts/recipes.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
 const BigFrog := preload("res://scripts/big_frog.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 
 const COLUMNS := 5
 
@@ -45,6 +48,9 @@ var _discovery_tween: Tween
 var _chest: Node
 ## Time.get_ticks_msec() of the last swing, so holding the button doesn't spam.
 var _last_swing := -100000
+## Whether the screen showing was opened as the inventory (not a chest), for
+## the bag's sounds.
+var _bag_open := false
 
 
 func _ready() -> void:
@@ -124,6 +130,7 @@ func _swing() -> void:
 	# Attacking takes stamina; without enough the swing doesn't happen (the
 	# server checks too).
 	if Items.is_weapon(Session.held_item) and player.stamina < player.ATTACK_STAMINA:
+		Sounds.play_ui(self, "error", -6.0)
 		return
 	_last_swing = now
 	var yaw: float = player.get_node("PlayerInput").yaw
@@ -193,6 +200,9 @@ func _distance(a: Node3D, b: Node3D) -> float:
 # --- Showing and hiding -----------------------------------------------------
 
 func _open(chest: Node) -> void:
+	if chest == null and not _screen.visible:
+		Sounds.play_ui(self, "bag_open")
+		_bag_open = true
 	_chest = chest
 	_screen.visible = true
 	_chest_panel.visible = chest != null
@@ -210,6 +220,9 @@ func _close() -> void:
 		_chest = null
 		chest.close()
 	if _screen != null and _screen.visible:
+		if _bag_open:
+			Sounds.play_ui(self, "bag_close")
+		_bag_open = false
 		_screen.visible = false
 		_set_mouse_free(false)
 

@@ -14,6 +14,15 @@ const BOUNCE_GRAVITY := 22.0
 const SHINE_SECONDS := 1.4
 
 
+## Seconds after being dropped that it hits the ground: once as it lands,
+## then at the end of every bounce.
+static func landings() -> Array[float]:
+	var times: Array[float] = [FLIGHT_SECONDS]
+	for height in BOUNCES:
+		times.append(times[-1] + _bounce_seconds(height))
+	return times
+
+
 ## Seconds from being dropped until it lies still.
 static func drop_seconds() -> float:
 	var total := FLIGHT_SECONDS

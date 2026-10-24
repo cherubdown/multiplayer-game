@@ -21,6 +21,10 @@ extends CharacterBody3D
 ## It's solid to the ground, trees and rocks, and stops against players, but
 ## players can walk through it, so it can never pin anyone in place.
 ##
+## Everyone near enough hears it (see scripts/sounds.gd): thumps as it hops,
+## croaks now and then, the snap of a bite, the thwip and slurp of its tongue,
+## a wet smack and a squawk when it's hit, and a long last croak as it dies.
+##
 ## The model is a few chunky shapes built in code and hand painted by the
 ## characters' shader (see scripts/character_model.gd), so there's nothing to
 ## import.
@@ -28,6 +32,7 @@ extends CharacterBody3D
 const CharacterModel := preload("res://scripts/character_model.gd")
 const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
 const Items := preload("res://scripts/items.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 
 const DISPLAY_NAME := "Big Frog"
 const MAX_HEALTH := 120
@@ -75,6 +80,8 @@ const LOOT := [
 ]
 ## How far from the frog's middle its loot lands.
 const LOOT_SPREAD := Vector2(0.9, 1.6)
+## The chance it croaks as it hops.
+const CROAK_CHANCE := 0.3
 
 ## Server side: the frog died.
 signal killed
@@ -82,11 +89,14 @@ signal killed
 ## Replicated: health left, and set by the server.
 @export var health := MAX_HEALTH:
 	set(value):
+		var was_alive := health > 0
 		health = clampi(value, 0, MAX_HEALTH)
 		if _health_bar != null:
 			_health_bar.fraction = float(health) / MAX_HEALTH
 		if health <= 0:
 			_show_dead()
+			if was_alive and is_inside_tree():
+				Sounds.play_on(self, "frog_death")
 
 ## Server side: the world, for finding players; where the frog lives.
 var world: Node
@@ -323,6 +333,9 @@ func _request_hit(yaw) -> void:
 
 @rpc("authority", "call_local", "unreliable")
 func _play_hop() -> void:
+	Sounds.play_on(self, "frog_hop")
+	if randf() < CROAK_CHANCE:
+		Sounds.play_on(self, "frog_croak")
 	if _model == null:
 		return
 	var tween := create_tween()
@@ -332,6 +345,7 @@ func _play_hop() -> void:
 
 @rpc("authority", "call_local", "unreliable")
 func _play_bite() -> void:
+	Sounds.play_on(self, "frog_bite")
 	if _model == null:
 		return
 	var tween := create_tween()
@@ -342,6 +356,7 @@ func _play_bite() -> void:
 ## Shoots the tongue out `reach` meters from the frog's middle and back.
 @rpc("authority", "call_local", "unreliable")
 func _play_lick(reach) -> void:
+	Sounds.play_on(self, "tongue_lick")
 	if _tongue == null or not (reach is float or reach is int):
 		return
 	var length := maxf(float(reach) - 0.85, 0.3)
@@ -363,6 +378,8 @@ func _set_tongue(length: float) -> void:
 
 @rpc("authority", "call_local", "unreliable")
 func _play_hurt() -> void:
+	Sounds.play_on(self, "hit_flesh")
+	Sounds.play_on(self, "frog_hurt")
 	if _model != null:
 		CharacterModel.flash_meshes(_model, Color(1.0, 0.9, 0.9))
 
