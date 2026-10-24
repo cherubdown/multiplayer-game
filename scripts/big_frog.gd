@@ -9,6 +9,7 @@ extends CharacterBody3D
 ## loses POISON_DAMAGE health every second for POISON_SECONDS (see
 ## Player.poison()). Hitting it with a weapon (see scripts/items.gd) takes the
 ## weapon's attack off its 120 health, and it goes after whoever hit it.
+## Killed, it drops its LOOT, which pops out of it onto the ground.
 ##
 ## Server-authoritative like the players: the server runs the frog and
 ## replicates where it is, which way it faces and its health to every peer
@@ -66,6 +67,14 @@ const SWING_SECONDS := 0.6
 const CALM_SECONDS := 8.0
 ## Seconds it lies there after dying before it's gone.
 const DEATH_SECONDS := 1.0
+## What a dead frog drops: item, how many, and the chance (0 to 1) of
+## dropping it at all.
+const LOOT := [
+	["frog_meat", 1, 1.0],
+	["frog_bile", 1, 0.15],
+]
+## How far from the frog's middle its loot lands.
+const LOOT_SPREAD := Vector2(0.9, 1.6)
 
 ## Server side: the frog died.
 signal killed
@@ -151,8 +160,31 @@ func take_damage(amount: int, peer := 0) -> bool:
 		velocity = Vector3.ZERO
 		collision_layer = 0
 		killed.emit()
+		_drop_loot()
 		get_tree().create_timer(DEATH_SECONDS).timeout.connect(queue_free)
 	return true
+
+
+## What one dead frog drops, rolled from LOOT: [item, count] pairs.
+static func roll_loot() -> Array:
+	var drops := []
+	for loot in LOOT:
+		if randf() < loot[2]:
+			drops.append([loot[0], loot[1]])
+	return drops
+
+
+## Server side: throws the loot out of the frog's body onto the ground around
+## it, each piece in its own direction.
+func _drop_loot() -> void:
+	if world == null or not world.has_method("spawn_item"):
+		return
+	var from := global_position + Vector3.UP * 0.6
+	var angle := randf() * TAU
+	for drop in roll_loot():
+		var away := Vector2.from_angle(angle) * randf_range(LOOT_SPREAD.x, LOOT_SPREAD.y)
+		angle += TAU / LOOT.size() + randf_range(-0.5, 0.5)
+		world.spawn_item(drop[0], drop[1], global_position + Vector3(away.x, 0.0, away.y), from)
 
 
 func _physics_process(delta: float) -> void:

@@ -3,8 +3,9 @@ extends SceneTree
 ## damage, dying, health coming back, sprinting and attacking using stamina,
 ## poison wearing health down and wearing off, the frog licking and poisoning
 ## players a way off, chasing and biting players nearby and leaving far ones
-## alone, and taking twelve wood sword hits to kill. Run from
-## the project folder:
+## alone, taking twelve wood sword hits to kill, and what it drops: Frog Meat
+## every time and Frog Bile now and then, popping out of it and bouncing to a
+## stop. Run from the project folder:
 ##   godot --headless --path . -s tests/test_combat.gd
 ## Exits non-zero if any check fails.
 
@@ -13,6 +14,7 @@ const FROG_SCENE := preload("res://scenes/big_frog.tscn")
 const Player := preload("res://scripts/player.gd")
 const BigFrog := preload("res://scripts/big_frog.gd")
 const Items := preload("res://scripts/items.gd")
+const DropBounce := preload("res://scripts/drop_bounce.gd")
 
 var _failures := 0
 
@@ -48,10 +50,74 @@ func _run() -> void:
 		await _check_stamina(players)
 		await _check_poison(players)
 		await _check_frog(world, players)
+		await _check_loot()
 
 	world.queue_free()
 	print("Combat: %s" % ("all checks passed" if _failures == 0 else "%d checks failed" % _failures))
 	quit(1 if _failures > 0 else 0)
+
+
+func _check_loot() -> void:
+	var meat := 0
+	var bile := 0
+	var rolls := 4000
+	for roll in rolls:
+		for drop in BigFrog.roll_loot():
+			_check(drop[1] == 1, "drops one at a time (%s)" % [drop])
+			if drop[0] == "frog_meat":
+				meat += 1
+			elif drop[0] == "frog_bile":
+				bile += 1
+	_check(meat == rolls, "always drops Frog Meat (%d of %d)" % [meat, rolls])
+	var chance := float(bile) / rolls
+	_check(chance > 0.12 and chance < 0.18, "drops Frog Bile about 15%% of the time (%.1f%%)" % (chance * 100.0))
+	for item in ["frog_meat", "frog_bile"]:
+		_check(Items.is_valid(item), "%s is an item" % item)
+
+	# A dead frog throws its loot out of its body onto the ground around it.
+	var catcher_script := GDScript.new()
+	catcher_script.source_code = """extends Node3D
+var dropped := []
+func spawn_item(item: String, count: int, spot: Vector3, from := Vector3.INF) -> void:
+	dropped.append([item, count, spot, from])
+"""
+	catcher_script.reload()
+	var catcher := Node3D.new()
+	catcher.set_script(catcher_script)
+	root.add_child(catcher)
+	var frog := FROG_SCENE.instantiate()
+	frog.world = catcher
+	frog.position = Vector3(-40.0, 0.0, 0.0)
+	catcher.add_child(frog)
+	await physics_frame
+	frog.take_damage(BigFrog.MAX_HEALTH, 0)
+	var meat_drop: Array = catcher.dropped.filter(func(d: Array) -> bool: return d[0] == "frog_meat")
+	_check(meat_drop.size() == 1, "a killed frog drops its meat (%s)" % [catcher.dropped])
+	if meat_drop.size() == 1:
+		var spot: Vector3 = meat_drop[0][2]
+		var from: Vector3 = meat_drop[0][3]
+		var gap := Vector2(spot.x - frog.position.x, spot.z - frog.position.z).length()
+		_check(gap >= BigFrog.LOOT_SPREAD.x - 0.01 and gap <= BigFrog.LOOT_SPREAD.y + 0.01,
+			"lands a little way off the frog (%.2f m)" % gap)
+		_check(from.is_finite() and from.y > frog.position.y and Vector2(from.x - frog.position.x, from.z - frog.position.z).length() < 0.1,
+			"flies out of the frog's body (%s)" % [from])
+	catcher.queue_free()
+
+	# Dropped things fly out of where they came from, bounce, and lie still.
+	var launch := Vector3(1.0, 1.5, 0.0)
+	var start = DropBounce.pose(0.0, launch)
+	_check(start != null and start[0].is_equal_approx(launch), "a drop starts where it came out of (%s)" % [start])
+	var landed = DropBounce.pose(DropBounce.FLIGHT_SECONDS + 0.001, launch)
+	_check(landed != null and landed[0].length() < 0.05 and landed[1] < 1.0, "lands where it lies, squashed (%s)" % [landed])
+	var highest := 0.0
+	var t := DropBounce.FLIGHT_SECONDS
+	while t < DropBounce.drop_seconds():
+		var pose = DropBounce.pose(t, launch)
+		if pose != null:
+			highest = maxf(highest, pose[0].y)
+		t += 0.01
+	_check(highest > 0.25 and highest <= DropBounce.BOUNCES[0] + 0.001, "bounces up after landing (%.2f m)" % highest)
+	_check(DropBounce.pose(DropBounce.drop_seconds() + 0.01, launch) == null, "and then lies still")
 
 
 func _check_player_health(players: Node3D) -> void:

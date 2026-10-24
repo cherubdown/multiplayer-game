@@ -17,7 +17,8 @@ extends Node3D
 ## scattered around the island from the seed, for players to pick (see
 ## scripts/forage.gd). Trees and big rocks stand in the way and can be chopped
 ## or broken with the right tool for wood and stone (see
-## scripts/harvestables.gd), which the server drops on the ground here.
+## scripts/harvestables.gd), which the server drops on the ground here. What
+## comes off a tree, a rock or a dead frog pops out of it and bounces.
 ##
 ## Big Frogs live in a few areas of the Meadows picked from the seed (see
 ## WorldGen.frog_areas() and scripts/big_frog.gd). The server puts a frog in
@@ -147,14 +148,17 @@ func drop_item(peer: int, item: String, count: int) -> void:
 
 
 ## Server side: puts a stack on the ground at (x, z) of `spot`, for anyone to
-## pick up.
-func spawn_item(item: String, count: int, spot: Vector3) -> void:
+## pick up. Given `from`, where it came out of (a tree, a frog), it flies out
+## of there and bounces to a stop with a flash (see scripts/item_pickup.gd).
+func spawn_item(item: String, count: int, spot: Vector3, from := Vector3.INF) -> void:
 	spot.y = terrain.ground_height(spot.x, spot.z)
 	var pickup := PICKUP_SCENE.instantiate()
 	pickup.item = item
 	pickup.count = count
 	pickup.world = self
 	pickup.position = spot
+	if from.is_finite():
+		pickup.launch = from - spot
 	items.add_child(pickup, true)
 
 
@@ -168,7 +172,8 @@ func _on_harvested(index: int, item: String, count: int, at: Vector3) -> void:
 			away = offset.normalized().rotated(randf_range(-0.6, 0.6))
 			break
 	var distance := harvestables.radius_of(index) + 0.6
-	spawn_item(item, count, at + Vector3(away.x, 0.0, away.y) * distance)
+	spawn_item(item, count, at + Vector3(away.x, 0.0, away.y) * distance,
+		at + Vector3(away.x, 0.0, away.y) * harvestables.radius_of(index) + Vector3.UP * 1.2)
 
 
 func _grow_harvestables() -> void:
