@@ -15,6 +15,10 @@ extends CharacterBody3D
 ## them back at the spawn with full health (see scripts/test_world.gd). Health
 ## is saved with the character when they leave (see Session).
 ##
+## Every peer sees how much each hurt or bit of healing was, as a number
+## floating up over the character (see scripts/damage_numbers.gd): red for
+## damage, green for healing, "Miss" when an enemy's attack misses.
+##
 ## Some enemies poison (see poison()): a poisoned character loses a little
 ## health every POISON_TICK seconds until it wears off, which everyone sees
 ## through `poisoned`. Dying or coming back cures it.
@@ -39,6 +43,7 @@ const Races := preload("res://scripts/races.gd")
 const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
 const Sounds := preload("res://scripts/sounds.gd")
 const Items := preload("res://scripts/items.gd")
+const DamageNumbers := preload("res://scripts/damage_numbers.gd")
 
 const SPEED := 5.0
 const WALK_SPEED := 2.0
@@ -202,6 +207,7 @@ func take_damage(amount: int, by: String) -> bool:
 	_since_hurt = 0.0
 	_regen = 0.0
 	_play_hurt.rpc()
+	_pop_number.rpc(-amount)
 	if health <= 0:
 		_cure()
 		print("%s was killed by %s" % [character_name, by])
@@ -260,6 +266,11 @@ func is_sprinting() -> bool:
 		and input.direction.length_squared() > 0.0
 
 
+## Server side: an enemy's attack on the character missed.
+func show_miss() -> void:
+	_pop_miss.rpc()
+
+
 @rpc("authority", "call_local", "unreliable")
 func _play_hurt() -> void:
 	model.flash(Color(1.0, 0.2, 0.15))
@@ -270,6 +281,19 @@ func _play_hurt() -> void:
 ## How high the character's voice is.
 func _voice_pitch() -> float:
 	return 1.45 if sex == "female" else 1.0
+
+
+## Floats `amount` up over the character: negative for damage, positive for
+## healing.
+@rpc("authority", "call_local", "unreliable")
+func _pop_number(amount) -> void:
+	if amount is int:
+		DamageNumbers.pop(self, amount, model.height + 0.45)
+
+
+@rpc("authority", "call_local", "unreliable")
+func _pop_miss() -> void:
+	DamageNumbers.miss(self, model.height + 0.45)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -352,6 +376,7 @@ func _physics_process(delta: float) -> void:
 		if _regen >= REGEN_SECONDS:
 			_regen -= REGEN_SECONDS
 			health += 1
+			_pop_number.rpc(1)
 
 	var sprinting := is_sprinting()
 	if sprinting:

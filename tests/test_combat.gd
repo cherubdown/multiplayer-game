@@ -1,9 +1,10 @@
 extends SceneTree
 ## Checks player health, stamina and the Big Frog without a network: taking
 ## damage, dying, health coming back, sprinting and attacking using stamina,
-## poison wearing health down and wearing off, the frog licking and poisoning
-## players a way off, chasing and biting players nearby and leaving far ones
-## alone, taking twelve wood sword hits to kill, and what it drops: Frog Meat
+## poison wearing health down and wearing off, the frog turning towards
+## players no faster than it should, licking and poisoning players a way off
+## (unless they step out of the tongue's way), chasing and biting players
+## nearby (missing one bite in five) and leaving far ones alone, taking twelve wood sword hits to kill, and what it drops: Frog Meat
 ## every time and Frog Bile now and then, popping out of it and bouncing to a
 ## stop. Run from the project folder:
 ##   godot --headless --path . -s tests/test_combat.gd
@@ -247,11 +248,18 @@ func _check_frog(world: Node3D, players: Node3D) -> void:
 	_check(far.health == Player.MAX_HEALTH, "doesn't go after a player far away")
 	far.queue_free()
 
-	# Someone a way off gets licked and poisoned.
+	# Someone a way off gets licked and poisoned, but not straight away: the
+	# frog crouches first and the tongue takes a moment to get there.
 	var licked := _add_player(players, "8", Vector3(0.0, 0.0, -(BigFrog.LICK_RANGE - 1.0)))
 	var hurts := []
 	licked.health_changed.connect(func(new: int, old: int) -> void: hurts.append(old - new))
-	await _wait(0.5)
+	for step in 180:
+		if frog.is_licking():
+			break
+		await physics_frame
+	await _wait(BigFrog.LICK_WINDUP * 0.5)
+	_check(frog.is_licking() and hurts.is_empty(), "winds up a lick before it lands (licking %s, %s)" % [frog.is_licking(), hurts])
+	await _wait(BigFrog.LICK_WINDUP * 0.5 + BigFrog.LICK_OUT + 0.1)
 	_check(hurts.size() > 0 and hurts[0] == BigFrog.LICK_DAMAGE, "licks a player %.0f m off for %d (%s)" % [BigFrog.LICK_RANGE - 1.0, BigFrog.LICK_DAMAGE, hurts])
 	_check(licked.poisoned, "the lick poisons them")
 	await _wait(BigFrog.POISON_SECONDS + 1.0)
@@ -259,7 +267,51 @@ func _check_frog(world: Node3D, players: Node3D) -> void:
 	licked.queue_free()
 	frog.queue_free()
 	await process_frame
+
+	# Someone who steps aside once the tongue's on its way isn't caught.
 	frog = _add_frog(world, Vector3.ZERO)
+	var dodger := _add_player(players, "9", Vector3(0.0, 0.0, -6.0))
+	var dodged := []
+	dodger.health_changed.connect(func(new: int, old: int) -> void: dodged.append(old - new))
+	for step in 120:
+		if frog._lick_reach > 0.0:
+			break
+		await physics_frame
+	_check(frog._lick_reach > 0.0, "lets its tongue go at someone a way off")
+	dodger.position.x += 2.0
+	await _wait(BigFrog.LICK_OUT + 0.2)
+	_check(dodged.is_empty() and not dodger.poisoned, "misses someone who steps aside (%s)" % [dodged])
+	frog.rotation.y = 0.0
+	var mouth: Vector3 = frog.global_position
+	_check(frog.tongue_catches(mouth + Vector3(0.0, 0.0, -6.0), 6.5) and not frog.tongue_catches(mouth + Vector3(2.0, 0.0, -6.0), 6.5)
+		and not frog.tongue_catches(mouth + Vector3(0.0, 0.0, 6.0), 6.5), "the tongue only catches what's in its way")
+	dodger.queue_free()
+	frog.queue_free()
+	await process_frame
+
+	# It turns towards someone behind it, but only so fast.
+	frog = _add_frog(world, Vector3.ZERO)
+	var behind := _add_player(players, "10", Vector3(0.0, 0.0, 3.0))
+	await _wait(0.25)
+	var turned := absf(rad_to_deg(frog.rotation.y))
+	_check(turned > 5.0 and turned <= BigFrog.TURN_DEGREES * 0.3 + 1.0,
+		"turns towards someone behind it at no more than %.0f degrees a second (%.0f in 0.25 s)" % [BigFrog.TURN_DEGREES, turned])
+	await _wait(180.0 / BigFrog.TURN_DEGREES)
+	_check(frog._off_facing(behind.global_position) < 5.0, "and ends up facing them (%.0f degrees off)" % frog._off_facing(behind.global_position))
+	behind.queue_free()
+	frog.queue_free()
+	await process_frame
+
+	# One bite in five misses.
+	var hits := 0
+	for roll in 4000:
+		if BigFrog.bite_hits():
+			hits += 1
+	var missed := 1.0 - hits / 4000.0
+	_check(missed > 0.17 and missed < 0.23, "misses about 20%% of bites (%.1f%%)" % (missed * 100.0))
+
+	frog = _add_frog(world, Vector3.ZERO)
+	frog.bite_miss_chance = 0.0
 
 	# Someone close is chased down and bitten.
 	var near := _add_player(players, "4", Vector3(4.5, 0.0, 0.0))
@@ -267,7 +319,7 @@ func _check_frog(world: Node3D, players: Node3D) -> void:
 	near.health_changed.connect(func(new: int, old: int) -> void:
 		if old - new == BigFrog.DAMAGE:
 			bites.append(old - new))
-	await _wait(4.0)
+	await _wait(6.0)
 	_check(bites.size() > 0, "hops over and bites a player nearby, %d at a time (health %d)" % [BigFrog.DAMAGE, near.health])
 	_check(frog.gap_to(near.global_position) < BigFrog.BITE_REACH + 0.6, "ends up next to them (%.2f m)" % frog.gap_to(near.global_position))
 
@@ -297,10 +349,11 @@ func _check_frog(world: Node3D, players: Node3D) -> void:
 	near.queue_free()
 
 	# A frog that kills someone leaves them be for a while.
-	var victim := _add_player(players, "5", Vector3(2.0, 0.0, 0.0))
+	var victim := _add_player(players, "5", Vector3(0.0, 0.0, -2.0))
 	victim.health = BigFrog.DAMAGE
 	victim.killed.connect(func(_by: String) -> void: victim.restore_health())
 	frog = _add_frog(world, Vector3.ZERO)
+	frog.bite_miss_chance = 0.0
 	await _wait(2.5)
 	_check(victim.health == Player.MAX_HEALTH, "a bite can kill a player (who comes back at full health)")
 	await _wait(2.5)
