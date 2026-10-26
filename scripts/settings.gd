@@ -7,6 +7,10 @@ extends Node
 ## line in _apply() if it changes something in the engine) is all it takes to
 ## show it, save it and load it.
 
+# Preloaded rather than a class_name so it resolves on a fresh checkout that
+# hasn't been imported in the editor (no global class cache yet).
+const Sounds := preload("res://scripts/sounds.gd")
+
 const PATH := "user://settings.cfg"
 
 ## Setting id ("section/key") -> how to show it in the options window.
@@ -24,12 +28,31 @@ const DEFINITIONS := {
 		"default": false,
 		"tooltip": "Fill the whole screen instead of showing a window.",
 	},
+	"audio/master_volume": {
+		"label": "Master volume",
+		"type": "slider",
+		"min": 0.0,
+		"max": 1.0,
+		"step": 0.05,
+		"default": 0.8,
+		"tooltip": "How loud the whole game is.",
+	},
+	"audio/effects_volume": {
+		"label": "Sound effects",
+		"type": "slider",
+		"min": 0.0,
+		"max": 1.0,
+		"step": 0.05,
+		"default": 1.0,
+		"tooltip": "How loud footsteps, swings, frogs, menus and every other sound effect are.",
+	},
 }
 
 ## Display names for the sections in DEFINITIONS. A section missing here is
 ## shown capitalized.
 const SECTION_NAMES := {
 	"display": "Display",
+	"audio": "Audio",
 }
 
 signal changed(id: String, value: Variant)
@@ -135,6 +158,19 @@ func _apply(id: String, value: Variant) -> void:
 				var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_WINDOWED
 				if DisplayServer.window_get_mode() != mode:
 					DisplayServer.window_set_mode(mode)
+		"audio/master_volume":
+			_set_bus_volume(&"Master", value)
+		"audio/effects_volume":
+			_set_bus_volume(Sounds.bus_name(), value)
+
+
+## Sets a bus's volume from 0 (silent) to 1 (full).
+func _set_bus_volume(bus: StringName, volume: float) -> void:
+	var index := AudioServer.get_bus_index(bus)
+	if index < 0:
+		return
+	AudioServer.set_bus_volume_db(index, linear_to_db(maxf(volume, 0.0001)))
+	AudioServer.set_bus_mute(index, volume <= 0.0)
 
 
 func _sanitize(id: String, value: Variant) -> Variant:

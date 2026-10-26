@@ -29,6 +29,11 @@ extends CharacterBody3D
 ## it (see spend_stamina()). It comes back quickly a moment after it was last
 ## used. With none left the character can't sprint or attack, and once it runs
 ## dry sprinting stays off until it has come back a little.
+##
+## Everyone hears a character's footsteps (quicker as they run), jumps and
+## landings, swings, hurts and death, from where they are (see
+## scripts/sounds.gd). The local player also hears poison take hold, running
+## out of stamina, health filling back up and coming back to life.
 
 # Preloaded rather than a class_name so it resolves on a fresh checkout that
 # hasn't been imported in the editor (no global class cache yet).
@@ -36,6 +41,8 @@ const PlayerInput := preload("res://scripts/player_input.gd")
 const CharacterModel := preload("res://scripts/character_model.gd")
 const Races := preload("res://scripts/races.gd")
 const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
+const Sounds := preload("res://scripts/sounds.gd")
+const Items := preload("res://scripts/items.gd")
 const DamageNumbers := preload("res://scripts/damage_numbers.gd")
 
 const SPEED := 5.0
@@ -62,6 +69,10 @@ const ATTACK_STAMINA := 15.0
 const STAMINA_REGEN := 35.0
 const STAMINA_REGEN_DELAY := 0.8
 const SPRINT_RECOVER := 25.0
+## Meters between footsteps, standing still and per m/s faster: longer
+## strides as the character speeds up, but still more steps a second.
+const STRIDE := 0.55
+const STRIDE_PER_SPEED := 0.17
 
 ## Every peer: health went from `old` to `new` (see `health`).
 signal health_changed(new: int, old: int)
@@ -125,6 +136,14 @@ var _poison_left := 0.0
 var _poison_tick := 0.0
 var _poison_damage := 0
 var _poison_by := ""
+## Every peer, for sounds: meters since the last footstep, seconds in the air,
+## and what was true last frame.
+var _stride := 0.0
+var _air_time := 0.0
+var _was_airborne := false
+var _was_poisoned := false
+var _was_dead := false
+var _was_tired := false
 
 
 func _enter_tree() -> void:
@@ -138,9 +157,11 @@ func _ready() -> void:
 	camera.current = is_local
 	$Nameplate.text = character_name
 	$Nameplate.visible = not is_local
+	died.connect(func(_by: String) -> void: Sounds.play_on(self, "death", 0.0, _voice_pitch()))
 	if is_local:
 		# Looked up rather than named, so tests can load this without autoloads.
 		get_node("/root/Session").leaving_world.connect(_on_leaving_world)
+		health_changed.connect(_on_own_health_changed)
 		# Start looking the way the character faces (where they faced when
 		# they last left), not always north.
 		input.yaw = rotation.y
@@ -172,6 +193,8 @@ func swing(yaw: float) -> void:
 @rpc("authority", "call_local", "unreliable")
 func _play_swing() -> void:
 	model.play_once("Swing")
+	var heavy := Items.tool_type(held_item) in ["axe", "pickaxe"]
+	Sounds.play_on(self, "swing_heavy" if heavy else "swing")
 
 
 ## Server side: takes `amount` health away. `by` names what did it, for the
@@ -251,6 +274,13 @@ func show_miss() -> void:
 @rpc("authority", "call_local", "unreliable")
 func _play_hurt() -> void:
 	model.flash(Color(1.0, 0.2, 0.15))
+	# Quieter for each sting of a poison than for a real blow.
+	Sounds.play_on(self, "hurt", -7.0 if poisoned else 0.0, _voice_pitch())
+
+
+## How high the character's voice is.
+func _voice_pitch() -> float:
+	return 1.45 if sex == "female" else 1.0
 
 
 ## Floats `amount` up over the character: negative for damage, positive for
@@ -275,11 +305,56 @@ func _on_leaving_world() -> void:
 	$PlayerInput/InputSynchronizer.public_visibility = false
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# The camera follows the local input's look direction, independent of
 	# which way the body is facing.
 	camera_pivot.global_rotation = Vector3(input.pitch, input.yaw, 0.0)
 	model.set_motion(Vector2(velocity.x, velocity.z).length(), airborne)
+	_play_sounds(delta)
+
+
+## Every peer: footsteps, jumps and landings from what the server replicates.
+## The local player's own cues too.
+func _play_sounds(delta: float) -> void:
+	if not Sounds.enabled():
+		return
+	var speed := Vector2(velocity.x, velocity.z).length()
+	if airborne:
+		if not _was_airborne and velocity.y > JUMP_VELOCITY * 0.5:
+			Sounds.play_on(self, "jump")
+		_air_time += delta
+	elif _was_airborne and _air_time > 0.25:
+		Sounds.play_on(self, "land")
+		_stride = 0.0
+	if not airborne:
+		_air_time = 0.0
+		if speed > 0.5:
+			_stride += speed * delta
+			if _stride >= STRIDE + STRIDE_PER_SPEED * speed:
+				_stride = 0.0
+				Sounds.play_on(self, "step", -4.0 if speed <= WALK_SPEED else 0.0)
+		else:
+			# The first step out of standing comes quickly.
+			_stride = STRIDE
+	_was_airborne = airborne
+	if poisoned and not _was_poisoned:
+		Sounds.play_on(self, "poison")
+	_was_poisoned = poisoned
+	if not $PlayerInput.is_multiplayer_authority():
+		return
+	var tired := stamina <= 0.0
+	if tired and not _was_tired:
+		Sounds.play_on(self, "tired", 0.0, _voice_pitch())
+	_was_tired = tired
+	if _was_dead and health > 0:
+		Sounds.play_ui(self, "respawn")
+	_was_dead = health <= 0
+
+
+## The local player: a little chime once health has filled back up.
+func _on_own_health_changed(new: int, old: int) -> void:
+	if new == MAX_HEALTH and old > 0 and old < MAX_HEALTH:
+		Sounds.play_ui(self, "heal")
 
 
 func _physics_process(delta: float) -> void:

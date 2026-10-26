@@ -13,10 +13,13 @@ extends Node3D
 ## anyone to pick up. Everyone sees how it's going: each hit shakes it for
 ## every player, and once it's down it's gone for everyone until it grows
 ## back. What's been cut down is forgotten when the server restarts.
+## Everyone near enough hears it too: a chop or a clink for every hit, and a
+## crash as a tree comes down or a rock breaks (see scripts/sounds.gd).
 
 const WorldGen := preload("res://scripts/world_gen.gd")
 const Items := preload("res://scripts/items.gd")
 const TreeMeshes := preload("res://scripts/tree_meshes.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 const Biome := WorldGen.Biome
 
 ## Meters per side of the grid cells trees and rocks are scattered in. At most
@@ -235,10 +238,12 @@ func hit(index: int, tool_type: String, damage: int, now_msec: int) -> bool:
 		hits[index] = taken
 		_broadcast(index)
 		_shake(index)
+		_play_hit(index, false)
 		return true
 	hits.erase(index)
 	felled[index] = now_msec + int(kind["respawn"] * 1000.0)
 	_broadcast(index)
+	_play_hit(index, true)
 	var amount: Vector2i = kind["amount"]
 	harvested.emit(index, kind["drop"], randi_range(amount.x, amount.y), spots[index]["position"])
 	return true
@@ -335,6 +340,7 @@ func _set_spot(index: int, taken: int, down: bool) -> void:
 	if index < 0 or index >= spots.size():
 		return
 	var was_hit: bool = taken > hits.get(index, 0)
+	var came_down := down and not felled.has(index)
 	if taken > 0:
 		hits[index] = taken
 	else:
@@ -346,6 +352,9 @@ func _set_spot(index: int, taken: int, down: bool) -> void:
 	_show(index)
 	if was_hit:
 		_shake(index)
+		_play_hit(index, false)
+	elif came_down:
+		_play_hit(index, true)
 	changed.emit(index)
 
 
@@ -429,6 +438,16 @@ func _shake(index: int) -> void:
 			_show(index, axis * sin(t * 25.0) * (1.0 - t) * 0.06), 0.0, 1.0, 0.4)
 	tween.finished.connect(func() -> void: _shakes.erase(index))
 	_shakes[index] = tween
+
+
+## The sound of a hit on a spot: a chop or a clink, and the crash of it
+## coming down if that was the last hit.
+func _play_hit(index: int, down: bool) -> void:
+	var rock := tool_for(index) == "pickaxe"
+	var at: Vector3 = spots[index]["position"] + Vector3.UP
+	Sounds.play_at(self, "pick" if rock else "chop", at)
+	if down:
+		Sounds.play_at(self, "rock_break" if rock else "tree_fall", at)
 
 
 ## The mesh for each kind, standing on y = 0. Trees are painted in the same

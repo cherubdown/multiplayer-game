@@ -10,11 +10,14 @@ extends Node3D
 ## and its sparkle flares up big and bright as it settles. That's all for
 ## show: every peer plays it itself from where the pickup lies and `launch`
 ## (see scripts/drop_bounce.gd), and the server clears `launch` once it's
-## over, so players who turn up later just see it lying there.
+## over, so players who turn up later just see it lying there. Each time it
+## hits the ground there's a thud, quieter with every bounce (see
+## scripts/sounds.gd).
 
 const Items := preload("res://scripts/items.gd")
 const Sparkle := preload("res://scripts/sparkle.gd")
 const DropBounce := preload("res://scripts/drop_bounce.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 
 ## Server side: everything here was picked up, just before it's removed.
 signal taken
@@ -59,7 +62,12 @@ func _process(delta: float) -> void:
 	# Spins faster while it's in the air.
 	$Mesh.rotate_y(delta * (6.0 if _age >= 0.0 and _age < DropBounce.FLIGHT_SECONDS else 1.0))
 	if _age >= 0.0:
+		var before := _age
 		_age += delta
+		var landings := DropBounce.landings()
+		for i in landings.size():
+			if before < landings[i] and _age >= landings[i]:
+				Sounds.play_on(self, "drop" if i == 0 else "bounce", -4.0 * i)
 		_play_drop(_age)
 
 

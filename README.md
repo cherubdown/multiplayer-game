@@ -92,7 +92,7 @@ The database is handled by the [godot-sqlite](https://github.com/2shady4u/godot-
 
 ## Options
 
-The **Options** button opens the options window. It is on the Host / Join menu and, once you're in the world, on the Esc menu next to **Quit game**. For now it has one setting, **Full screen** on the Display tab. Changes take effect straight away and are saved on your PC in `settings.cfg` in the same user data folder as above, so they stick between launches. Esc or **Close** shuts the window.
+The **Options** button opens the options window. It is on the Host / Join menu and, once you're in the world, on the Esc menu next to **Quit game**. It has **Full screen** on the Display tab, and **Master volume** and **Sound effects** sliders on the Audio tab. Changes take effect straight away and are saved on your PC in `settings.cfg` in the same user data folder as above, so they stick between launches. Esc or **Close** shuts the window.
 
 To add a setting, declare it in `DEFINITIONS` in `scripts/settings.gd` (a toggle, slider or choice, with its tab, label and default). The options window builds its tabs and controls from that list, so it shows up there and saves without further work; add a line to `_apply()` if it needs to change something in the engine.
 
@@ -147,6 +147,12 @@ The Big Frog's health, damage, lick, poison, speed and ranges are at the top of 
 
 The recipes are in `scripts/recipes.gd`: to add one, add a line with what it makes and what it takes, and it shows up in the crafting window once a player has discovered everything it takes and works on the server with no other changes. Tools are items with a `tool` entry in `scripts/items.gd`. The trees and rocks, how many hits each takes, what they drop and how fast they grow back are at the top of `scripts/harvestables.gd`.
 
+### Sound
+
+Every action has a sound. Players' footsteps (quicker when running), jumps, landings, swings, hurts and deaths are heard in 3D by everyone nearby, as are chops, clinks and the crash of a tree coming down or a rock breaking, the rustle of picking plants, loot thudding and bouncing as it lands, chests creaking open and thumping shut, and the frogs' hops, croaks, bites, licks, hurts and deaths. You also hear your own poison taking hold, running out of stamina, your health filling back up and coming back to life, and pops, thuds and ticks as things go in and out of your inventory, hammering for a craft, a chime for a new recipe, a ring for taking a tool in hand, a click for every button and a buzz when something isn't allowed.
+
+The sounds are made in code (filtered noise and tones) in `scripts/sounds.gd`, so there are no audio files to import or license: each one is a few lines in `render()`, with its volume and how far it carries in `SOUNDS`. To add one, add it to both and call `Sounds.play_on(node, "name")` (or `play_at()` / `play_ui()`) where it happens. Nothing plays on a dedicated server. `tests/test_sounds.gd -- --export=<folder>` saves every sound as a .wav to listen to.
+
 ## Layout
 
 - `scripts/network.gd` is the `Network` autoload that owns the `ENetMultiplayerPeer` and the three launch modes.
@@ -161,5 +167,6 @@ The recipes are in `scripts/recipes.gd`: to add one, add a line with what it mak
 - `scripts/items.gd` lists every kind of item, including tools. `scripts/recipes.gd` lists what can be crafted, and `scripts/inventory_ui.gd` draws the inventory, chest and crafting windows.
 - `scripts/races.gd` defines the races and their body measurements; `scripts/character_model.gd` builds and animates the model for a race and sex, for players and for the character select preview (`scripts/character_preview.gd`).
 - `scenes/player.tscn` is the third-person `CharacterBody3D` player. `scripts/player.gd` moves it on the server; `scripts/player_input.gd` collects the owning client's input and syncs it to the server.
-- `tests/` has headless tests for the account store, the world generator, foraging, crafting, chopping trees, health and the Big Frog, and the whole login flow (which also crafts a wood sword and checks a frog lives in each frog area); `.github/scripts/run-tests.sh` runs them (CI does too).
+- `tests/` has headless tests for the account store, the world generator, settings, sound effects, foraging, crafting, chopping trees, health and the Big Frog, and the whole login flow (which also crafts a wood sword and checks a frog lives in each frog area); `.github/scripts/run-tests.sh` runs them (CI does too).
+- `scripts/sounds.gd` makes and plays every sound effect; `scripts/ui_sounds.gd` is the `UiSounds` autoload that plays the menu and inventory sounds and makes the rest in the background as the game starts.
 - `export_presets.cfg` holds the Windows game and dedicated server export presets.

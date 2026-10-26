@@ -11,7 +11,8 @@ extends Node3D
 ## inventory (dropping at their feet whatever doesn't fit) and tells every
 ## client what is left. A picked plant grows back after a while: an apple tree
 ## holds a few apples and grows them back one at a time. What's been picked is
-## forgotten when the server restarts.
+## forgotten when the server restarts. Everyone near enough hears a rustle
+## as something is picked (see scripts/sounds.gd).
 ##
 ## The plants are drawn on every peer that draws anything, with every copy of
 ## a mesh in a region drawn at once (GPU instancing, see _build_plants). A
@@ -22,6 +23,7 @@ const WorldGen := preload("res://scripts/world_gen.gd")
 const TreeMeshes := preload("res://scripts/tree_meshes.gd")
 const Items := preload("res://scripts/items.gd")
 const Sparkle := preload("res://scripts/sparkle.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 const Biome := WorldGen.Biome
 
 ## Meters per side of the grid cells plants are scattered in. At most one
@@ -240,6 +242,7 @@ func take(index: int, now_msec: int) -> int:
 	if have <= 0:
 		return 0
 	_set_picks(index, have - 1)
+	Sounds.play_at(self, "pluck", spots[index]["position"])
 	if not _regrow_at.has(index):
 		_regrow_at[index] = now_msec + _regrow_msec(index)
 	return KINDS[spots[index]["kind"]]["yield"]
@@ -327,6 +330,8 @@ func _set_state(state: Dictionary) -> void:
 func _set_left(index: int, count: int) -> void:
 	if index < 0 or index >= spots.size():
 		return
+	if count < picks_left(index):
+		Sounds.play_at(self, "pluck", spots[index]["position"])
 	if count >= spots[index]["picks"]:
 		left.erase(index)
 	else:

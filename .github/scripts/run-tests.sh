@@ -53,6 +53,10 @@ echo "::group::Settings and options window"
 "$GODOT" --headless --path . -s tests/test_settings.gd
 echo "::endgroup::"
 
+echo "::group::Sound effects"
+"$GODOT" --headless --path . -s tests/test_sounds.gd
+echo "::endgroup::"
+
 echo "::group::Forage"
 "$GODOT" --headless --path . -s tests/test_forage.gd
 echo "::endgroup::"

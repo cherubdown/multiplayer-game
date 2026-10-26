@@ -7,9 +7,11 @@ extends StaticBody3D
 ## A player close enough presses E to open it. While it's open, the client asks
 ## the server to move whole stacks between its inventory and the chest; the
 ## server checks the player is still nearby, moves what fits, and sends the new
-## contents to everyone looking in.
+## contents to everyone looking in. The lid creaks open and thumps shut
+## (see scripts/sounds.gd).
 
 const Inventory := preload("res://scripts/inventory.gd")
+const Sounds := preload("res://scripts/sounds.gd")
 
 const SLOTS := 20
 
@@ -52,6 +54,7 @@ func interact() -> void:
 func close() -> void:
 	if is_open:
 		is_open = false
+		Sounds.play_on(self, "chest_close")
 		_request_close.rpc_id(1)
 		closed.emit()
 
@@ -168,6 +171,8 @@ func _changed() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _show(slots: Array) -> void:
+	if not is_open:
+		Sounds.play_on(self, "chest_open")
 	contents = slots
 	is_open = true
 	contents_changed.emit(slots)
@@ -175,5 +180,7 @@ func _show(slots: Array) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _closed() -> void:
+	if is_open:
+		Sounds.play_on(self, "chest_close")
 	is_open = false
 	closed.emit()
