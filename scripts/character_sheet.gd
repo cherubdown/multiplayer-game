@@ -19,6 +19,7 @@ const Items := preload("res://scripts/items.gd")
 const Equipment := preload("res://scripts/equipment.gd")
 const Races := preload("res://scripts/races.gd")
 const UiStyle := preload("res://scripts/ui_style.gd")
+const HotbarBar := preload("res://scripts/hotbar_bar.gd")
 
 ## Where each slot sits in the sheet, and its size: x, y, width, height.
 const LAYOUT := {
@@ -145,7 +146,8 @@ func _on_slot_input(event: InputEvent, slot: String) -> void:
 
 # --- Drag and drop ----------------------------------------------------------
 # Dragged from here, the data is { "gear": slot }. Dropped here, an inventory
-# stack is { "from_chest": false, "slot": int } (see scripts/inventory_ui.gd).
+# stack is { "from_chest": false, "slot": int } (see scripts/inventory_ui.gd),
+# and a hotbar slot is { "hotbar": index } (see scripts/hotbar_bar.gd).
 
 func _slot_drag_data(_at: Vector2, button: Button, slot: String) -> Variant:
 	var item := item_in(slot)
@@ -166,6 +168,9 @@ func _slot_drag_data(_at: Vector2, button: Button, slot: String) -> Variant:
 func _can_drop_on(_at: Vector2, data, slot: String) -> bool:
 	if not data is Dictionary:
 		return false
+	if data.get("hotbar") is int:
+		# A tool from the hotbar goes in the hand.
+		return slot == "main_hand" and HotbarBar.ready_to_hold(data["hotbar"])
 	if data.has("gear"):
 		return data["gear"] != slot and data["gear"] != "main_hand" and slot != "main_hand" \
 			and fits(item_in(data["gear"]), slot)
@@ -178,7 +183,9 @@ func _can_drop_on(_at: Vector2, data, slot: String) -> bool:
 
 
 func _drop_on(_at: Vector2, data, slot: String) -> void:
-	if data.has("gear"):
+	if data.has("hotbar"):
+		Session.hold(Session.hotbar[data["hotbar"]])
+	elif data.has("gear"):
 		Session.move_equipped(data["gear"], slot)
 	elif slot == "main_hand":
 		Session.hold(Session.inventory[data["slot"]]["item"])

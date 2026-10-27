@@ -122,7 +122,13 @@ Drag something wearable from your inventory onto the slot it fits (or right-clic
 
 There are no recipes for gear yet. To try the sheet, a placeholder piece for every slot (Leather Cap, Bone Amulet, Hide Pauldrons, Leather Tunic, Leather Gloves, Rope Belt, Hide Leggings, Leather Boots, two Copper Rings and a Wooden Buckler) lies on the ground in a ring a little further out from the spawn than the other test items. Gear doesn't do anything yet: it's only worn on the sheet, not shown on your character or counted as armor.
 
-The inventory, chest, crafting window and character sheet are drawn in old-school dark stone inside carved metal frames, all generated in code by `scripts/ui_style.gd`.
+### Hotbar
+
+Four slots along the bottom of the screen hold the tools and weapons you switch between: axes, pickaxes, swords, anything that goes in the main hand. Press **1** to **4** to take that slot's tool in hand (press it again to put it away), or scroll the mouse wheel to step through them. The slot in your hand has a lit rim.
+
+With the inventory open, drag a tool onto a slot to put it there, drag between slots to swap them, and drag one off the hotbar (or right-click it) to empty the slot. A tool you take in hand any other way, such as by right-clicking it or crafting it empty handed, goes in the first empty slot by itself. The tools stay in your inventory: a slot whose tool is somewhere else, such as in a chest, is greyed out until it's back. The server checks every change, and each character's hotbar is saved with them.
+
+The inventory, chest, crafting window, character sheet and hotbar are drawn in old-school dark stone inside carved metal frames, all generated in code by `scripts/ui_style.gd`.
 
 ### Crafting and tools
 

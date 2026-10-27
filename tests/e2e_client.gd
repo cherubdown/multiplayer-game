@@ -136,6 +136,8 @@ func _run() -> void:
 	_check("stone_axe" in session.recipes, "discovered recipes are still known after re-entering the world")
 	_check(_gear_item != "" and session.equipment.get(_gear_slot, "") == _gear_item,
 		"still wears the %s after re-entering the world" % _gear_item)
+	_check(session.hotbar.size() == 4 and session.hotbar[1] == "wood_sword" and session.hotbar[3] == "stone_axe",
+		"the hotbar is the same after re-entering the world (%s)" % [session.hotbar])
 	await create_timer(0.5).timeout
 	player = world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id())
 	_check(player != null, "server spawned our player again")
@@ -434,6 +436,18 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 	_check(session.held_item == "wood_sword", "holds the wood sword")
 	await create_timer(0.3).timeout
 	_check(player.held_item == "wood_sword", "everyone sees the wood sword in hand")
+
+	# Both went on the hotbar when they were taken in hand.
+	_check(session.hotbar.size() == 4 and session.hotbar[0] == "stone_axe" and session.hotbar[1] == "wood_sword",
+		"the axe and the sword go on the hotbar when taken in hand (%s)" % [session.hotbar])
+	_check(hud != null and hud.hotbar.slot_buttons.size() == 4 and hud.hotbar.visible, "the hotbar shows four slots")
+	await _call_and_wait(session.held_changed, session.use_hotbar.bind(0))
+	_check(session.held_item == "stone_axe", "hotbar slot 1 takes the axe in hand")
+	await _call_and_wait(session.hotbar_changed, session.swap_hotbar.bind(0, 3))
+	_check(session.hotbar[0] == "" and session.hotbar[3] == "stone_axe", "moves the axe to hotbar slot 4")
+	_check(not session.use_hotbar(0), "an empty hotbar slot holds nothing")
+	await _call_and_wait(session.held_changed, session.use_hotbar.bind(1))
+	_check(session.held_item == "wood_sword", "hotbar slot 2 swaps the sword back in hand")
 
 	# Big Frogs live out in their areas of the Meadows, one in each when the
 	# world starts, too tough to take on with a wood sword in this test.

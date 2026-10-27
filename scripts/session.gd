@@ -36,6 +36,9 @@ signal held_changed(item: String)
 ## Client side: what this client's character wears changed (slot -> item, see
 ## scripts/equipment.gd).
 signal equipment_changed(worn: Dictionary)
+## Client side: the tools on this client's hotbar changed (see
+## scripts/hotbar.gd).
+signal hotbar_changed(slots: Array)
 
 ## Every peer: the world seed is known (or changed). The world is generated
 ## from it; see scripts/world_gen.gd.
@@ -57,6 +60,7 @@ const Inventory := preload("res://scripts/inventory.gd")
 const Items := preload("res://scripts/items.gd")
 const Recipes := preload("res://scripts/recipes.gd")
 const Equipment := preload("res://scripts/equipment.gd")
+const Hotbar := preload("res://scripts/hotbar.gd")
 const MAX_FAILED_LOGINS := 5
 ## Slots in every character's inventory.
 const INVENTORY_SLOTS := 20
@@ -76,6 +80,9 @@ var held_item := ""
 ## What this client's character wears, slot -> item (see
 ## scripts/equipment.gd), {} when not in the world.
 var equipment := {}
+## The tools on this client's hotbar, an item id or "" per slot (see
+## scripts/hotbar.gd), [] when not in the world.
+var hotbar: Array = []
 ## Every peer: the seed of the world being played, "" until the server says.
 var world_seed := ""
 
@@ -92,6 +99,7 @@ var _saved_health := {}       # peer id -> the character's health when it last l
 var _bodies := {}             # peer id -> the character's player node in the world
 var _held := {}               # peer id -> the tool the character holds, if any
 var _equipment := {}          # peer id -> Equipment the character wears
+var _hotbars := {}            # peer id -> the character's Hotbar
 var _failed_logins := {}      # peer id -> count
 
 
@@ -159,6 +167,11 @@ func equipment_updated(peer: int) -> void:
 		return
 	_accounts().save_equipment(_usernames[peer], _in_world[peer], gear.to_dict())
 	_set_equipment.rpc_id(peer, gear.to_dict())
+
+
+## Server side: a peer's character's hotbar, or null.
+func hotbar_of(peer: int) -> Hotbar:
+	return _hotbars.get(peer)
 
 
 ## Server side: the items a peer's character has discovered (item -> true).
@@ -230,8 +243,10 @@ func reset() -> void:
 	_failed_logins.clear()
 	_held.clear()
 	_equipment.clear()
+	_hotbars.clear()
 	held_item = ""
 	equipment = {}
+	hotbar = []
 
 
 # --- Client API -------------------------------------------------------------
@@ -307,6 +322,34 @@ func move_equipped(from: String, to: String) -> void:
 ## Drops what's worn in equipment slot `slot` on the ground.
 func drop_equipped(slot: String) -> void:
 	_request_drop_equipped.rpc_id(1, slot)
+
+
+## Puts a tool from the inventory in hotbar slot `index`, or empties it with
+## "". A tool already on the hotbar swaps places with what was there.
+func set_hotbar_slot(index: int, item: String) -> void:
+	_request_set_hotbar_slot.rpc_id(1, index, item)
+
+
+## Swaps two hotbar slots.
+func swap_hotbar(from: int, to: int) -> void:
+	_request_swap_hotbar.rpc_id(1, from, to)
+
+
+## Holds the tool in hotbar slot `index`, or puts it away if it's already in
+## hand. Returns false if there's nothing there to hold (an empty slot, or a
+## tool that isn't in the inventory just now).
+func use_hotbar(index: int) -> bool:
+	var item: String = hotbar[index] if index >= 0 and index < hotbar.size() else ""
+	if item == "":
+		return false
+	if item == held_item:
+		hold("")
+		return true
+	for slot in inventory:
+		if slot != null and slot["item"] == item:
+			hold(item)
+			return true
+	return false
 
 
 ## Back to character select without disconnecting.
@@ -420,10 +463,14 @@ func _request_enter_world(p_name) -> void:
 	var gear := Equipment.new()
 	gear.load_dict(_accounts().load_equipment(account, p_name))
 	_equipment[peer] = gear
+	var bar := Hotbar.new()
+	bar.load_array(_accounts().load_hotbar(account, p_name))
+	_hotbars[peer] = bar
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.describe(race, sex)])
 	_entered_world.rpc_id(peer, p_name)
 	_set_recipes.rpc_id(peer, Recipes.unlocked(_discovered[peer]), [])
 	_set_equipment.rpc_id(peer, gear.to_dict())
+	_set_hotbar.rpc_id(peer, bar.to_array())
 	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
@@ -477,6 +524,28 @@ func _request_hold(item) -> void:
 		return
 	if item == "" or (Items.is_tool_item(item) and inv.count_of(item) > 0):
 		_set_held_of(peer, item)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_set_hotbar_slot(index, item) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	var bar := hotbar_of(peer)
+	if inv == null or bar == null or not Hotbar.has_slot(index) or not item is String:
+		return
+	# Only a tool the character has can go on; any slot can be emptied.
+	if item != "" and inv.count_of(item) == 0:
+		return
+	if bar.set_slot(index, item):
+		_hotbar_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_swap_hotbar(from, to) -> void:
+	var peer := _logged_in_sender()
+	var bar := hotbar_of(peer)
+	if bar != null and from is int and to is int and bar.swap(from, to):
+		_hotbar_updated(peer)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -597,10 +666,17 @@ func _set_equipment(worn: Dictionary) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _set_hotbar(slots: Array) -> void:
+	hotbar = slots
+	hotbar_changed.emit(slots)
+
+
+@rpc("authority", "call_local", "reliable")
 func _left_world() -> void:
 	character_name = ""
 	inventory = []
 	equipment = {}
+	hotbar = []
 	recipes = []
 	held_item = ""
 	left_world.emit()
@@ -681,6 +757,8 @@ func _remove_from_world(peer: int) -> void:
 		_accounts().save_inventory(_usernames[peer], _in_world[peer], _inventories[peer].to_array())
 	if _equipment.has(peer):
 		_accounts().save_equipment(_usernames[peer], _in_world[peer], _equipment[peer].to_dict())
+	if _hotbars.has(peer):
+		_accounts().save_hotbar(_usernames[peer], _in_world[peer], _hotbars[peer].to_array())
 	_save_position(peer)
 	_in_world.erase(peer)
 	_races.erase(peer)
@@ -692,6 +770,7 @@ func _remove_from_world(peer: int) -> void:
 	_bodies.erase(peer)
 	_held.erase(peer)
 	_equipment.erase(peer)
+	_hotbars.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
 
@@ -714,16 +793,29 @@ func _discover(peer: int) -> Array:
 
 
 ## Server side: puts `item` in a peer's hand ("" for nothing), on their
-## player for everyone to see, and tells them.
+## player for everyone to see, and tells them. A tool taken in hand that isn't
+## on the hotbar yet goes in its first empty slot.
 func _set_held_of(peer: int, item: String) -> void:
 	if item == "":
 		_held.erase(peer)
 	else:
 		_held[peer] = item
+		var bar := hotbar_of(peer)
+		if bar != null and bar.add(item):
+			_hotbar_updated(peer)
 	var body := body_of(peer)
 	if body != null:
 		body.held_item = item
 	_set_held.rpc_id(peer, item)
+
+
+## Server side: saves a peer's hotbar and sends it to them.
+func _hotbar_updated(peer: int) -> void:
+	var bar := hotbar_of(peer)
+	if bar == null:
+		return
+	_accounts().save_hotbar(_usernames[peer], _in_world[peer], bar.to_array())
+	_set_hotbar.rpc_id(peer, bar.to_array())
 
 
 func _save_position(peer: int) -> void:

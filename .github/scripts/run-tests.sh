@@ -69,6 +69,10 @@ echo "::group::Equipment and the character sheet"
 "$GODOT" --headless --path . -s tests/test_equipment.gd
 echo "::endgroup::"
 
+echo "::group::Hotbar"
+"$GODOT" --headless --path . -s tests/test_hotbar.gd
+echo "::endgroup::"
+
 echo "::group::Crafting"
 "$GODOT" --headless --path . -s tests/test_crafting.gd
 echo "::endgroup::"

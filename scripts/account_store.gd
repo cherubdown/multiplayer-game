@@ -18,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 9
+const SCHEMA_VERSION := 10
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -201,6 +201,33 @@ func save_equipment(username: String, character_name: String, worn: Dictionary) 
 		[JSON.stringify(worn), account["id"], character_name.strip_edges().to_lower()])
 	if not ok:
 		push_error("Could not save %s's equipment in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
+## The tools on a character's hotbar, as slots for Hotbar.load_array(), or []
+## if there are none.
+func load_hotbar(username: String, character_name: String) -> Array:
+	if not is_open():
+		return []
+	_db.query_with_bindings(
+		"SELECT c.hotbar FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty():
+		return []
+	var slots = JSON.parse_string(str(_db.query_result[0]["hotbar"]))
+	return slots if slots is Array else []
+
+
+## Saves a character's hotbar (Hotbar.to_array()).
+func save_hotbar(username: String, character_name: String, slots: Array) -> bool:
+	var account := _account(username)
+	if account.is_empty():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET hotbar = ? WHERE account_id = ? AND name_key = ?",
+		[JSON.stringify(slots), account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's hotbar in %s: %s" % [character_name, path, _db.error_message])
 	return ok
 
 
@@ -532,6 +559,19 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add character equipment to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 10:
+		# The tools on each character's hotbar, as a JSON array of item ids
+		# ("" for an empty slot, see scripts/hotbar.gd).
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN hotbar TEXT NOT NULL DEFAULT '[]';
+			PRAGMA user_version = 10;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add character hotbars to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true

@@ -1,11 +1,13 @@
 extends CanvasLayer
 ## What's always on screen while playing: the local player's health bar in the
-## bottom left corner with their stamina bar under it, a red flash when they're hurt, and a notice when they
+## bottom left corner with their stamina bar under it, the hotbar of tools in
+## the middle along the bottom (see scripts/hotbar_bar.gd), a red flash when they're hurt, and a notice when they
 ## die. While they're poisoned the health bar and the flash turn green. Added to the world on every peer that has a player (not a dedicated
 ## server). Only shows what the server replicates on the player (see
 ## scripts/player.gd).
 
 const Player := preload("res://scripts/player.gd")
+const HotbarBar := preload("res://scripts/hotbar_bar.gd")
 
 ## Seconds the death notice stays up.
 const DEATH_NOTICE_SECONDS := 4.0
@@ -24,6 +26,8 @@ var _flash: ColorRect
 var _flash_tween: Tween
 var _death: Label
 var _death_tween: Tween
+## The hotbar, bottom middle (see scripts/hotbar_bar.gd).
+var hotbar: HotbarBar
 ## The local player whose health is showing, or null.
 var _player: Node3D
 
@@ -75,6 +79,7 @@ func _show_player(player: Node3D) -> void:
 		_player.died.disconnect(_on_died)
 	_player = player
 	_panel.visible = player != null
+	hotbar.visible = player != null
 	if player == null:
 		_death.visible = false
 		return
@@ -157,6 +162,16 @@ func _build() -> void:
 	_stamina_value = Label.new()
 	_add_bar(rows, "Stamina", _stamina_bar, _stamina_value, Player.MAX_STAMINA,
 			Color(0.85, 0.7, 0.15), Color(0.15, 0.12, 0.03, 0.9))
+
+	var bottom := CenterContainer.new()
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	bottom.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bottom.offset_bottom = -8
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bottom)
+	hotbar = HotbarBar.new()
+	bottom.add_child(hotbar)
 
 	_death = Label.new()
 	_death.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
