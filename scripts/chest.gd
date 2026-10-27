@@ -61,9 +61,10 @@ func close() -> void:
 
 ## Moves a stack from one slot to another, each in the chest (`from_chest` /
 ## `to_chest` true) or in the player's inventory, merging or swapping like
-## Inventory.move_slot().
-func move(from_chest: bool, from_slot: int, to_chest: bool, to_slot: int) -> void:
-	_request_move.rpc_id(1, from_chest, from_slot, to_chest, to_slot)
+## Inventory.move_slot(), or with `split` moving just half the stack (see
+## Inventory.split_slot()).
+func move(from_chest: bool, from_slot: int, to_chest: bool, to_slot: int, split := false) -> void:
+	_request_move.rpc_id(1, from_chest, from_slot, to_chest, to_slot, split)
 
 
 ## Drops the stack in slot `slot` of the chest on the ground by the player.
@@ -117,14 +118,15 @@ func _request_take(slot) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _request_move(from_chest, from_slot, to_chest, to_slot) -> void:
+func _request_move(from_chest, from_slot, to_chest, to_slot, split) -> void:
 	var peer := _viewer()
-	if peer == 0 or not (from_chest is bool and to_chest is bool and from_slot is int and to_slot is int):
+	if peer == 0 or not (from_chest is bool and to_chest is bool and from_slot is int and to_slot is int \
+			and split is bool):
 		return
 	var player_inventory := Session.inventory_of(peer)
 	var source := _inventory if from_chest else player_inventory
 	var target := _inventory if to_chest else player_inventory
-	if not source.move_slot(from_slot, target, to_slot):
+	if not (source.split_slot(from_slot, target, to_slot) if split else source.move_slot(from_slot, target, to_slot)):
 		return
 	if from_chest or to_chest:
 		_changed()
