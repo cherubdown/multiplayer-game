@@ -11,9 +11,16 @@ extends RefCounted
 ## for what each type can break). A tool with an "attack" in its "tool" entry
 ## is a weapon: that's how much health one hit takes off an enemy (see
 ## scripts/big_frog.gd).
+##
+## An item with an "equip" entry can be worn in that slot of the character
+## sheet (see scripts/equipment.gd): "helm", "amulet", "shoulders", "chest",
+## "hands", "belt", "leggings", "boots", "ring" (either ring slot) or
+## "off_hand".
 
 const IDS: Array[String] = ["wood", "stone", "flint", "berries", "blueberries", "mushroom", "apple",
-	"frog_meat", "frog_bile", "wood_sword", "stone_axe", "stone_pickaxe", "stone_sword"]
+	"frog_meat", "frog_bile", "wood_sword", "stone_axe", "stone_pickaxe", "stone_sword",
+	"leather_cap", "bone_amulet", "hide_pauldrons", "leather_tunic", "leather_gloves", "rope_belt",
+	"hide_leggings", "leather_boots", "copper_ring", "wooden_buckler"]
 
 const INFO := {
 	"wood": {
@@ -111,6 +118,86 @@ const INFO := {
 		"shape": "tool",
 		"tool": { "type": "sword", "damage": 2, "attack": 15 },
 	},
+	"leather_cap": {
+		"name": "Leather Cap",
+		"description": "A snug cap of stitched leather. Wear it on your head.",
+		"max_stack": 1,
+		"color": Color(0.55, 0.36, 0.2),
+		"shape": "armor",
+		"equip": "helm",
+	},
+	"bone_amulet": {
+		"name": "Bone Amulet",
+		"description": "A carved bone charm on a leather cord. Wear it around your neck.",
+		"max_stack": 1,
+		"color": Color(0.9, 0.86, 0.74),
+		"shape": "armor",
+		"equip": "amulet",
+	},
+	"hide_pauldrons": {
+		"name": "Hide Pauldrons",
+		"description": "Thick hide shoulder guards. Wear them on your shoulders.",
+		"max_stack": 1,
+		"color": Color(0.48, 0.34, 0.24),
+		"shape": "armor",
+		"equip": "shoulders",
+	},
+	"leather_tunic": {
+		"name": "Leather Tunic",
+		"description": "A sleeveless tunic of tanned leather. Wear it on your chest.",
+		"max_stack": 1,
+		"color": Color(0.6, 0.4, 0.22),
+		"shape": "armor",
+		"equip": "chest",
+	},
+	"leather_gloves": {
+		"name": "Leather Gloves",
+		"description": "Work gloves of soft leather. Wear them on your hands.",
+		"max_stack": 1,
+		"color": Color(0.5, 0.32, 0.18),
+		"shape": "armor",
+		"equip": "hands",
+	},
+	"rope_belt": {
+		"name": "Rope Belt",
+		"description": "A length of braided rope, knotted at the waist. Wear it as a belt.",
+		"max_stack": 1,
+		"color": Color(0.76, 0.64, 0.42),
+		"shape": "armor",
+		"equip": "belt",
+	},
+	"hide_leggings": {
+		"name": "Hide Leggings",
+		"description": "Hard-wearing hide trousers. Wear them on your legs.",
+		"max_stack": 1,
+		"color": Color(0.42, 0.3, 0.2),
+		"shape": "armor",
+		"equip": "leggings",
+	},
+	"leather_boots": {
+		"name": "Leather Boots",
+		"description": "Sturdy boots with thick soles. Wear them on your feet.",
+		"max_stack": 1,
+		"color": Color(0.36, 0.24, 0.14),
+		"shape": "armor",
+		"equip": "boots",
+	},
+	"copper_ring": {
+		"name": "Copper Ring",
+		"description": "A plain band of beaten copper. Wear it on either hand; you have room for two.",
+		"max_stack": 1,
+		"color": Color(0.85, 0.5, 0.25),
+		"shape": "armor",
+		"equip": "ring",
+	},
+	"wooden_buckler": {
+		"name": "Wooden Buckler",
+		"description": "A small round shield of planks. Wear it in your off hand.",
+		"max_stack": 1,
+		"color": Color(0.6, 0.42, 0.24),
+		"shape": "armor",
+		"equip": "off_hand",
+	},
 }
 
 
@@ -205,6 +292,57 @@ const ICONS := {
 		<path d="M28 40 L12 56" stroke="#3b220e" stroke-width="8" stroke-linecap="round"/>
 		<path d="M28 40 L12 56" stroke="#9a6430" stroke-width="5" stroke-linecap="round"/>
 	</svg>""",
+	"leather_cap": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M10 42 C10 18 54 18 54 42 Z" fill="#8a5a2e" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M6 42 H58 V48 H6 Z" fill="#6e4422" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M32 22 V42 M20 28 C24 26 28 25 32 25" fill="none" stroke="#c99560" stroke-width="2" stroke-linecap="round"/>
+	</svg>""",
+	"bone_amulet": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M12 8 C14 30 24 38 32 40 C40 38 50 30 52 8" fill="none" stroke="#5a3415" stroke-width="3" stroke-linecap="round"/>
+		<path d="M32 38 L42 50 L32 60 L22 50 Z" fill="#ece3cc" stroke="#7d6f55" stroke-width="2.5" stroke-linejoin="round"/>
+		<circle cx="32" cy="50" r="3" fill="#7d6f55"/>
+	</svg>""",
+	"hide_pauldrons": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M4 40 C4 22 16 14 28 18 L26 44 C18 40 10 42 4 40 Z" fill="#7a5638" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M60 40 C60 22 48 14 36 18 L38 44 C46 40 54 42 60 40 Z" fill="#7a5638" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M10 30 C14 24 20 22 24 23 M54 30 C50 24 44 22 40 23" fill="none" stroke="#b8875e" stroke-width="2.5" stroke-linecap="round"/>
+	</svg>""",
+	"leather_tunic": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M20 8 L28 12 H36 L44 8 L56 18 L50 28 L46 26 V58 H18 V26 L14 28 L8 18 Z" fill="#9a6430" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M28 12 L32 22 L36 12 M32 22 V40" fill="none" stroke="#5a3415" stroke-width="2"/>
+		<path d="M18 46 H46" stroke="#5a3415" stroke-width="3"/>
+	</svg>""",
+	"leather_gloves": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M18 58 V44 L10 30 C8 26 12 24 15 27 L20 34 V12 C20 8 26 8 26 12 V28 V8 C26 4 32 4 32 8 V28 V10 C32 6 38 6 38 10 V30 V16 C38 12 44 12 44 16 V44 L40 58 Z" fill="#87552c" stroke="#3b220e" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M18 50 H40" stroke="#5a3415" stroke-width="3"/>
+	</svg>""",
+	"rope_belt": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M4 30 C20 24 44 24 60 30 V38 C44 32 20 32 4 38 Z" fill="#c2a46a" stroke="#6b5530" stroke-width="2" stroke-linejoin="round"/>
+		<path d="M10 28 L14 36 M20 27 L24 34 M30 26 L34 33 M40 27 L44 34 M50 28 L54 35" stroke="#8a7144" stroke-width="2"/>
+		<circle cx="32" cy="34" r="6" fill="#c2a46a" stroke="#6b5530" stroke-width="2"/>
+		<path d="M30 38 L26 56 M34 38 L40 54" stroke="#c2a46a" stroke-width="4" stroke-linecap="round"/>
+	</svg>""",
+	"hide_leggings": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M16 6 H48 L52 58 H36 L32 24 L28 58 H12 Z" fill="#6b4a32" stroke="#2e1d10" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M16 12 H48" stroke="#3b2414" stroke-width="3"/>
+		<path d="M20 30 L18 50 M44 30 L46 50" stroke="#9c7552" stroke-width="2" stroke-linecap="round"/>
+	</svg>""",
+	"leather_boots": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<path d="M14 6 H32 V40 L52 44 C58 46 58 56 54 56 H12 Z" fill="#5c3a1e" stroke="#26170a" stroke-width="2.5" stroke-linejoin="round"/>
+		<path d="M12 52 H56" stroke="#26170a" stroke-width="4"/>
+		<path d="M14 14 H32 M18 22 L28 22 M18 30 L28 30" stroke="#a87436" stroke-width="2"/>
+	</svg>""",
+	"copper_ring": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<ellipse cx="32" cy="36" rx="20" ry="18" fill="none" stroke="#7a3f14" stroke-width="10"/>
+		<ellipse cx="32" cy="36" rx="20" ry="18" fill="none" stroke="#d98a45" stroke-width="6"/>
+		<path d="M18 26 C22 22 26 20 30 20" fill="none" stroke="#ffd0a0" stroke-width="2.5" stroke-linecap="round"/>
+	</svg>""",
+	"wooden_buckler": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+		<circle cx="32" cy="32" r="26" fill="#9a6a38" stroke="#3b220e" stroke-width="3"/>
+		<path d="M20 9 V55 M32 6 V58 M44 9 V55" stroke="#6e4422" stroke-width="2"/>
+		<circle cx="32" cy="32" r="26" fill="none" stroke="#8c8c92" stroke-width="3"/>
+		<circle cx="32" cy="32" r="7" fill="#8c8c92" stroke="#3c3c42" stroke-width="2"/>
+	</svg>""",
 }
 
 static var _icon_cache := {}
@@ -250,6 +388,16 @@ static func attack_damage(item: String) -> int:
 
 static func is_weapon(item: String) -> bool:
 	return attack_damage(item) > 0
+
+
+## Which kind of equipment slot the item is worn in (see
+## scripts/equipment.gd), or "" if it can't be worn.
+static func equip_slot(item: String) -> String:
+	return INFO[item].get("equip", "") if INFO.has(item) else ""
+
+
+static func is_wearable(item: String) -> bool:
+	return equip_slot(item) != ""
 
 
 ## What the item is for, for tooltips.
@@ -313,6 +461,10 @@ static func mesh(item: String) -> Mesh:
 			slab.radius = 0.18
 			slab.height = 0.16
 			result = slab
+		"armor":
+			var piece := BoxMesh.new()
+			piece.size = Vector3(0.3, 0.1, 0.3)
+			result = piece
 		"vial":
 			var vial := CapsuleMesh.new()
 			vial.radius = 0.07

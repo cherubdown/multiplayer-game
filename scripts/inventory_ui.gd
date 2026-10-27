@@ -14,6 +14,13 @@ extends CanvasLayer
 ## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
 ## with a weapon at the enemy in reach (see scripts/big_frog.gd).
 ## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
+##
+## C shows the character sheet beside the inventory instead of the crafting
+## window (see scripts/character_sheet.gd): drag something wearable onto the
+## slot it fits, or right-click it in the inventory, to put it on. Tab and C
+## switch between the two, or close the screen when pressed again.
+## Everything is drawn in the old-school stone and carved metal of
+## scripts/ui_style.gd.
 ## Opening and closing the inventory rustles the bag (the chest has its own
 ## sounds, and UiSounds the rest, see scripts/ui_sounds.gd).
 ## All of it only sends requests: the server owns every inventory (see Session
@@ -24,6 +31,9 @@ const Recipes := preload("res://scripts/recipes.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
 const BigFrog := preload("res://scripts/big_frog.gd")
 const Sounds := preload("res://scripts/sounds.gd")
+const Equipment := preload("res://scripts/equipment.gd")
+const CharacterSheet := preload("res://scripts/character_sheet.gd")
+const UiStyle := preload("res://scripts/ui_style.gd")
 
 const COLUMNS := 5
 
@@ -36,6 +46,8 @@ var _chest_panel: Control
 var _chest_grid: GridContainer
 var _hint: Label
 var _crafting_panel: Control
+var _sheet_panel: Control
+var _sheet: CharacterSheet
 var _recipe_list: VBoxContainer
 ## The last thing the server said about crafting, shown under the recipes.
 var _craft_message: Label
@@ -57,6 +69,7 @@ func _ready() -> void:
 	_build()
 	Session.inventory_changed.connect(func(_slots: Array) -> void: _refresh())
 	Session.held_changed.connect(func(_item: String) -> void: _refresh())
+	Session.equipment_changed.connect(func(_worn: Dictionary) -> void: _refresh())
 	Session.craft_finished.connect(_on_craft_finished)
 	Session.recipes_changed.connect(_on_recipes_changed)
 	Session.left_world.connect(_close)
@@ -97,16 +110,23 @@ func _input(event: InputEvent) -> void:
 	if Session.character_name == "" or event.is_echo():
 		return
 	if _screen.visible:
-		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("inventory") \
-				or event.is_action_pressed("interact"):
+		# Tab and C swap the crafting window and the character sheet, or
+		# close the one already showing.
+		var swap := _chest == null and ((event.is_action_pressed("inventory") and _sheet_panel.visible)
+			or (event.is_action_pressed("character") and not _sheet_panel.visible))
+		if swap:
+			_open(null, not _sheet_panel.visible)
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("ui_cancel") or event.is_action_pressed("inventory") \
+				or event.is_action_pressed("character") or event.is_action_pressed("interact"):
 			_close()
 			get_viewport().set_input_as_handled()
 		return
 	# Only while playing, not while the Esc menu is up.
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
-	if event.is_action_pressed("inventory"):
-		_open(null)
+	if event.is_action_pressed("inventory") or event.is_action_pressed("character"):
+		_open(null, event.is_action_pressed("character"))
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("interact"):
 		var target := _target()
@@ -199,17 +219,24 @@ func _distance(a: Node3D, b: Node3D) -> float:
 
 # --- Showing and hiding -----------------------------------------------------
 
-func _open(chest: Node) -> void:
+## Shows the inventory with `chest` beside it, or with no chest the crafting
+## window, or the character sheet if `sheet`.
+func _open(chest: Node, sheet := false) -> void:
 	if chest == null and not _screen.visible:
 		Sounds.play_ui(self, "bag_open")
 		_bag_open = true
 	_chest = chest
 	_screen.visible = true
 	_chest_panel.visible = chest != null
-	_crafting_panel.visible = chest == null
+	_crafting_panel.visible = chest == null and not sheet
+	_sheet_panel.visible = chest == null and sheet
 	_craft_message.text = ""
-	_hint.text = "Drag stacks between slots, or click one to send it across. Drag off the panels to drop it." \
-		if chest != null else "Drag stacks to rearrange them, or off the panel to drop them. Right-click a tool to hold it."
+	if chest != null:
+		_hint.text = "Drag stacks between slots, or click one to send it across. Drag off the panels to drop it."
+	elif sheet:
+		_hint.text = "Drag gear onto the slot it fits, or right-click it, to put it on. Tab shows crafting."
+	else:
+		_hint.text = "Drag stacks to rearrange them, or off the panel to drop them. Right-click a tool to hold it, or gear to wear it. C shows your character."
 	_refresh()
 	_set_mouse_free(true)
 
@@ -250,6 +277,8 @@ func _set_mouse_free(free: bool) -> void:
 
 func _refresh() -> void:
 	_fill(_inventory_grid, Session.inventory, false)
+	if _sheet_panel.visible:
+		_sheet.refresh(_local_player())
 	if _chest != null:
 		_fill(_chest_grid, _chest.contents, true)
 	else:
@@ -384,12 +413,8 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 	var button := Button.new()
 	button.custom_minimum_size = Vector2(72, 72)
 	button.focus_mode = Control.FOCUS_NONE
-	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(4)
-	style.set_border_width_all(1)
-	style.set_content_margin_all(8)
-	style.border_color = Color(1, 1, 1, 0.12)
-	style.bg_color = Color(0.12, 0.12, 0.14, 0.9)
+	var tint := Color.TRANSPARENT
+	var rim := ""
 	if slot != null:
 		var item: String = slot["item"]
 		var icon := Items.icon(item)
@@ -400,7 +425,7 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 		else:
 			button.text = Items.display_name(item)
 		button.tooltip_text = "%s\n%s" % [Items.display_name(item), Items.description(item)]
-		style.bg_color = Items.color(item).darkened(0.7)
+		tint = Items.color(item)
 		button.pressed.connect(_on_slot_pressed.bind(in_chest, index))
 		if Items.is_tool_item(item) and not in_chest:
 			var held := item == Session.held_item
@@ -408,8 +433,11 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 				else "\n(Right-click to hold it.)"
 			button.gui_input.connect(_on_tool_slot_input.bind(item))
 			if held:
-				style.border_color = Color(1.0, 0.82, 0.3)
-				style.set_border_width_all(3)
+				rim = "held"
+		elif Items.is_wearable(item) and not in_chest:
+			button.tooltip_text += "\n(Goes in the %s slot. Right-click to put it on.)" \
+				% Equipment.SLOT_NAMES.get(Equipment.slot_for(item, Session.equipment), "")
+			button.gui_input.connect(_on_gear_slot_input.bind(item, index))
 		var count := Label.new()
 		# Things that don't stack, like tools, don't need a count.
 		count.text = str(slot["count"]) if Items.max_stack(item) > 1 else ""
@@ -421,12 +449,9 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 		count.add_theme_color_override("font_outline_color", Color.BLACK)
 		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.add_child(count)
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var state_style := style.duplicate()
-		if state == "hover":
-			state_style.bg_color = style.bg_color.lightened(0.15)
-			state_style.border_color = Color(1, 1, 1, 0.35)
-		button.add_theme_stylebox_override(state, state_style)
+	for state in ["normal", "pressed", "disabled"]:
+		button.add_theme_stylebox_override(state, UiStyle.slot_style(rim, tint))
+	button.add_theme_stylebox_override("hover", UiStyle.slot_style(rim if rim != "" else "hover", tint))
 	button.set_drag_forwarding(
 		_get_slot_drag_data.bind(button, slot, in_chest, index),
 		_can_drop_on_slot.bind(in_chest),
@@ -438,6 +463,13 @@ func _slot_button(slot, in_chest: bool, index: int) -> Button:
 func _on_tool_slot_input(event: InputEvent, item: String) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		Session.hold("" if Session.held_item == item else item)
+		get_viewport().set_input_as_handled()
+
+
+## Right-clicking something wearable puts it on (see scripts/equipment.gd).
+func _on_gear_slot_input(event: InputEvent, item: String, index: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		Session.equip(index, Equipment.slot_for(item, Session.equipment))
 		get_viewport().set_input_as_handled()
 
 
@@ -454,7 +486,9 @@ func _on_slot_pressed(in_chest: bool, index: int) -> void:
 # --- Drag and drop ----------------------------------------------------------
 # Dragged data is { "from_chest": bool, "slot": int }. Dropping on a slot moves
 # the stack there (merging or swapping); dropping anywhere off the panels puts
-# it on the ground.
+# it on the ground. From the character sheet it's { "gear": slot }: dropped on
+# the inventory that takes it off, and off the panels drops it (or for the
+# main hand, puts the tool away).
 
 func _get_slot_drag_data(_at: Vector2, button: Button, slot, in_chest: bool, index: int) -> Variant:
 	if slot == null:
@@ -478,10 +512,15 @@ func _get_slot_drag_data(_at: Vector2, button: Button, slot, in_chest: bool, ind
 
 
 func _can_drop_on_slot(_at: Vector2, data, in_chest: bool) -> bool:
+	if _is_gear_data(data):
+		return not in_chest
 	return _is_slot_data(data) and (_chest != null or not (in_chest or data["from_chest"]))
 
 
 func _drop_on_slot(_at: Vector2, data, in_chest: bool, index: int) -> void:
+	if _is_gear_data(data):
+		_take_off(data["gear"], index)
+		return
 	if data["from_chest"] or in_chest:
 		_chest.move(data["from_chest"], data["slot"], in_chest, index)
 	else:
@@ -489,10 +528,18 @@ func _drop_on_slot(_at: Vector2, data, in_chest: bool, index: int) -> void:
 
 
 func _can_drop_on_ground(_at: Vector2, data) -> bool:
+	if _is_gear_data(data):
+		return true
 	return _is_slot_data(data) and (_chest != null or not data["from_chest"])
 
 
 func _drop_on_ground(_at: Vector2, data) -> void:
+	if _is_gear_data(data):
+		if data["gear"] == "main_hand":
+			Session.hold("")
+		else:
+			Session.drop_equipped(data["gear"])
+		return
 	if data["from_chest"]:
 		_chest.drop(data["slot"])
 	else:
@@ -501,6 +548,19 @@ func _drop_on_ground(_at: Vector2, data) -> void:
 
 func _is_slot_data(data) -> bool:
 	return data is Dictionary and data.has("from_chest") and data.has("slot")
+
+
+func _is_gear_data(data) -> bool:
+	return data is Dictionary and data.has("gear")
+
+
+## Takes off what's in a slot of the character sheet into inventory slot
+## `index`.
+func _take_off(slot: String, index: int) -> void:
+	if slot == "main_hand":
+		Session.hold("")
+	else:
+		Session.unequip(slot, index)
 
 
 func _build() -> void:
@@ -564,6 +624,10 @@ func _build() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 24)
 	column.add_child(row)
+	_sheet = CharacterSheet.new()
+	_sheet_panel = _panel("", _sheet)
+	_sheet_panel.visible = false
+	row.add_child(_sheet_panel)
 	var inventory_panel := _panel("Inventory")
 	_inventory_grid = inventory_panel.get_meta("grid")
 	row.add_child(inventory_panel)
@@ -594,18 +658,14 @@ func _build() -> void:
 ## none is given.
 func _panel(title: String, content: Control = null) -> PanelContainer:
 	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.08, 0.1, 0.85)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(12)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", UiStyle.panel_style())
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
 	if title != "":
 		var label := Label.new()
 		label.text = title
-		label.add_theme_font_size_override("font_size", 20)
+		UiStyle.title(label)
 		box.add_child(label)
 	if content != null:
 		box.add_child(content)

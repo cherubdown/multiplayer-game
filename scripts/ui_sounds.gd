@@ -3,8 +3,8 @@ extends Node
 ## in every menu, and the local player's inventory cues, heard from what the
 ## server sends back (see Session): a pop for something picked up, a thud for
 ## something dropped, a tick for a stack moved, hammering for a craft, a chime
-## for a recipe discovered, a ring for taking a tool in hand and a buzz when
-## the server says no.
+## for a recipe discovered, a ring for taking a tool in hand or putting gear
+## on (and a softer one taking it off) and a buzz when the server says no.
 ##
 ## It also makes every sound effect (see scripts/sounds.gd) on a background
 ## thread as the game starts, so none of them stutters the first time it
@@ -16,6 +16,12 @@ const Sounds := preload("res://scripts/sounds.gd")
 ## when not in the world (so the first inventory on entering is quiet).
 var _counts = null
 var _slots: Array = []
+## What the local character wore when the server last said, or null when not
+## in the world.
+var _worn = null
+## Whether gear went on or came off since the last inventory, which the server
+## always sends straight after.
+var _gear_changed := false
 var _warm_task := -1
 var _quitting := false
 
@@ -35,8 +41,13 @@ func _ready() -> void:
 	Session.characters_changed.connect(func(_characters: Array, message: String) -> void:
 		if message != "":
 			Sounds.play_ui(self, "error"))
-	Session.entered_world.connect(func(_name: String) -> void: _counts = null)
-	Session.left_world.connect(func() -> void: _counts = null)
+	Session.entered_world.connect(func(_name: String) -> void:
+		_counts = null
+		_worn = null)
+	Session.left_world.connect(func() -> void:
+		_counts = null
+		_worn = null)
+	Session.equipment_changed.connect(_on_equipment_changed)
 	Session.inventory_changed.connect(_on_inventory_changed)
 	Session.craft_finished.connect(func(_recipe: String, message: String) -> void:
 		Sounds.play_ui(self, "craft" if message == "" else "error"))
@@ -63,18 +74,44 @@ func _on_button_pressed() -> void:
 	Sounds.play_ui(self, "click")
 
 
-## Works out what just happened to the inventory from how it changed.
-## Crafting both takes and gives, and has its own sound (craft_finished).
-func _on_inventory_changed(slots: Array) -> void:
+## Gear going on rings, coming off is softer. The inventory the server sends
+## straight after is the same item moving, so it stays quiet.
+func _on_equipment_changed(worn: Dictionary) -> void:
+	var before = _worn
+	_worn = worn.duplicate()
+	if before == null:
+		return
+	if worn.size() >= before.size() and worn != before:
+		Sounds.play_ui(self, "equip")
+	elif worn.size() < before.size():
+		Sounds.play_ui(self, "unequip")
+	_gear_changed = true
+
+
+## Item -> how many the local character has, carried or worn.
+func _counted(slots: Array) -> Dictionary:
 	var counts := {}
 	for slot in slots:
 		if slot != null:
 			counts[slot["item"]] = counts.get(slot["item"], 0) + slot["count"]
+	if _worn != null:
+		for item in _worn.values():
+			counts[item] = counts.get(item, 0) + 1
+	return counts
+
+
+## Works out what just happened to the inventory from how it changed.
+## Crafting both takes and gives, and has its own sound (craft_finished).
+func _on_inventory_changed(slots: Array) -> void:
+	var counts := _counted(slots)
 	var before = _counts
 	var moved := slots != _slots
 	_counts = counts
 	_slots = slots.duplicate(true)
-	if before == null:
+	# Gear going on or coming off already made its sound.
+	var quiet := _gear_changed
+	_gear_changed = false
+	if before == null or quiet:
 		return
 	var gained := false
 	var lost := false

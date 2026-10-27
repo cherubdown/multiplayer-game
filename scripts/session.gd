@@ -33,6 +33,9 @@ signal craft_finished(recipe_id: String, message: String)
 signal recipes_changed(recipe_ids: Array, new_ids: Array)
 ## Client side: the item this client's character holds changed ("" for none).
 signal held_changed(item: String)
+## Client side: what this client's character wears changed (slot -> item, see
+## scripts/equipment.gd).
+signal equipment_changed(worn: Dictionary)
 
 ## Every peer: the world seed is known (or changed). The world is generated
 ## from it; see scripts/world_gen.gd.
@@ -53,6 +56,7 @@ const WorldGen := preload("res://scripts/world_gen.gd")
 const Inventory := preload("res://scripts/inventory.gd")
 const Items := preload("res://scripts/items.gd")
 const Recipes := preload("res://scripts/recipes.gd")
+const Equipment := preload("res://scripts/equipment.gd")
 const MAX_FAILED_LOGINS := 5
 ## Slots in every character's inventory.
 const INVENTORY_SLOTS := 20
@@ -69,6 +73,9 @@ var inventory: Array = []
 var recipes: Array = []
 ## The item this client's character holds in its hand, "" for none.
 var held_item := ""
+## What this client's character wears, slot -> item (see
+## scripts/equipment.gd), {} when not in the world.
+var equipment := {}
 ## Every peer: the seed of the world being played, "" until the server says.
 var world_seed := ""
 
@@ -84,6 +91,7 @@ var _saved_spots := {}        # peer id -> where the character last left the wor
 var _saved_health := {}       # peer id -> the character's health when it last left the world, -1 for full
 var _bodies := {}             # peer id -> the character's player node in the world
 var _held := {}               # peer id -> the tool the character holds, if any
+var _equipment := {}          # peer id -> Equipment the character wears
 var _failed_logins := {}      # peer id -> count
 
 
@@ -134,6 +142,23 @@ func inventory_updated(peer: int) -> void:
 	# A tool that's been dropped or put away can't stay in the hand.
 	if held_of(peer) != "" and inv.count_of(held_of(peer)) == 0:
 		_set_held_of(peer, "")
+
+
+## Server side: what a peer's character wears, or null. Call
+## equipment_updated() after changing it.
+func equipment_of(peer: int) -> Equipment:
+	return _equipment.get(peer)
+
+
+## Server side: saves what a peer's character wears and sends it to them.
+## Clients count on the inventory coming straight after (see UiSounds), so
+## call inventory_updated() next even if it didn't change.
+func equipment_updated(peer: int) -> void:
+	var gear: Equipment = _equipment.get(peer)
+	if gear == null:
+		return
+	_accounts().save_equipment(_usernames[peer], _in_world[peer], gear.to_dict())
+	_set_equipment.rpc_id(peer, gear.to_dict())
 
 
 ## Server side: the items a peer's character has discovered (item -> true).
@@ -204,7 +229,9 @@ func reset() -> void:
 	_bodies.clear()
 	_failed_logins.clear()
 	_held.clear()
+	_equipment.clear()
 	held_item = ""
+	equipment = {}
 
 
 # --- Client API -------------------------------------------------------------
@@ -256,6 +283,29 @@ func craft(recipe_id: String) -> void:
 ## with "".
 func hold(item: String) -> void:
 	_request_hold.rpc_id(1, item)
+
+
+## Wears the item in inventory slot `from` in equipment slot `slot` (see
+## scripts/equipment.gd), putting what was worn there back in its place.
+func equip(from: int, slot: String) -> void:
+	_request_equip.rpc_id(1, from, slot)
+
+
+## Takes off what's worn in equipment slot `slot`, into inventory slot `to`
+## (-1 for wherever it fits).
+func unequip(slot: String, to: int = -1) -> void:
+	_request_unequip.rpc_id(1, slot, to)
+
+
+## Moves what's worn in one equipment slot to another, such as between the
+## ring slots.
+func move_equipped(from: String, to: String) -> void:
+	_request_move_equipped.rpc_id(1, from, to)
+
+
+## Drops what's worn in equipment slot `slot` on the ground.
+func drop_equipped(slot: String) -> void:
+	_request_drop_equipped.rpc_id(1, slot)
 
 
 ## Back to character select without disconnecting.
@@ -366,9 +416,13 @@ func _request_enter_world(p_name) -> void:
 	_discover(peer)
 	_saved_spots[peer] = _accounts().load_position(account, p_name)
 	_saved_health[peer] = _accounts().load_health(account, p_name)
+	var gear := Equipment.new()
+	gear.load_dict(_accounts().load_equipment(account, p_name))
+	_equipment[peer] = gear
 	print("Peer %d entered the world as %s the %s" % [peer, p_name, Races.describe(race, sex)])
 	_entered_world.rpc_id(peer, p_name)
 	_set_recipes.rpc_id(peer, Recipes.unlocked(_discovered[peer]), [])
+	_set_equipment.rpc_id(peer, gear.to_dict())
 	_set_inventory.rpc_id(peer, inv.to_array())
 	player_entered.emit(peer, p_name, race)
 	_broadcast_roster()
@@ -420,6 +474,55 @@ func _request_hold(item) -> void:
 		return
 	if item == "" or (Items.is_tool_item(item) and inv.count_of(item) > 0):
 		_set_held_of(peer, item)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_equip(from, slot) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	var gear := equipment_of(peer)
+	if inv == null or gear == null or not from is int or not Equipment.is_slot(slot):
+		return
+	if gear.equip(inv, from, slot):
+		# Equipment first, so the inventory arriving after doesn't look like
+		# something was dropped.
+		equipment_updated(peer)
+		inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_unequip(slot, to) -> void:
+	var peer := _logged_in_sender()
+	var inv := inventory_of(peer)
+	var gear := equipment_of(peer)
+	if inv == null or gear == null or not Equipment.is_slot(slot) or not to is int:
+		return
+	if gear.unequip(slot, inv, to):
+		equipment_updated(peer)
+		inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_move_equipped(from, to) -> void:
+	var peer := _logged_in_sender()
+	var gear := equipment_of(peer)
+	if gear != null and Equipment.is_slot(from) and Equipment.is_slot(to) and gear.move(from, to):
+		equipment_updated(peer)
+		inventory_updated(peer)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_drop_equipped(slot) -> void:
+	var peer := _logged_in_sender()
+	var gear := equipment_of(peer)
+	if gear == null or not Equipment.is_slot(slot):
+		return
+	var item := gear.take(slot)
+	if item == "":
+		return
+	equipment_updated(peer)
+	inventory_updated(peer)
+	item_dropped.emit(peer, item, 1)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -485,9 +588,16 @@ func _set_held(item: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
+func _set_equipment(worn: Dictionary) -> void:
+	equipment = worn
+	equipment_changed.emit(worn)
+
+
+@rpc("authority", "call_local", "reliable")
 func _left_world() -> void:
 	character_name = ""
 	inventory = []
+	equipment = {}
 	recipes = []
 	held_item = ""
 	left_world.emit()
@@ -566,6 +676,8 @@ func _remove_from_world(peer: int) -> void:
 	# Saved on every change already; this catches anything missed.
 	if _inventories.has(peer):
 		_accounts().save_inventory(_usernames[peer], _in_world[peer], _inventories[peer].to_array())
+	if _equipment.has(peer):
+		_accounts().save_equipment(_usernames[peer], _in_world[peer], _equipment[peer].to_dict())
 	_save_position(peer)
 	_in_world.erase(peer)
 	_races.erase(peer)
@@ -576,6 +688,7 @@ func _remove_from_world(peer: int) -> void:
 	_saved_health.erase(peer)
 	_bodies.erase(peer)
 	_held.erase(peer)
+	_equipment.erase(peer)
 	player_left.emit(peer)
 	_broadcast_roster()
 

@@ -18,7 +18,7 @@ const MAX_CHARACTERS := 5
 const PBKDF2_ITERATIONS := 100000
 const SALT_BYTES := 16
 ## Bump and add a step to _migrate() when the tables change.
-const SCHEMA_VERSION := 8
+const SCHEMA_VERSION := 9
 
 var path: String
 var _db: Object  # SQLite, created through ClassDB (see _open()).
@@ -174,6 +174,33 @@ func save_inventory(username: String, character_name: String, slots: Array) -> b
 		[JSON.stringify(slots), account["id"], character_name.strip_edges().to_lower()])
 	if not ok:
 		push_error("Could not save %s's inventory in %s: %s" % [character_name, path, _db.error_message])
+	return ok
+
+
+## What a character wears, as slot -> item for Equipment.load_dict(), or {}
+## if nothing.
+func load_equipment(username: String, character_name: String) -> Dictionary:
+	if not is_open():
+		return {}
+	_db.query_with_bindings(
+		"SELECT c.equipment FROM characters c JOIN accounts a ON a.id = c.account_id"
+		+ " WHERE a.username = ? AND c.name_key = ?", [username.to_lower(), character_name.strip_edges().to_lower()])
+	if _db.query_result.is_empty():
+		return {}
+	var worn = JSON.parse_string(str(_db.query_result[0]["equipment"]))
+	return worn if worn is Dictionary else {}
+
+
+## Saves what a character wears (Equipment.to_dict()).
+func save_equipment(username: String, character_name: String, worn: Dictionary) -> bool:
+	var account := _account(username)
+	if account.is_empty():
+		return false
+	var ok: bool = _db.query_with_bindings(
+		"UPDATE characters SET equipment = ? WHERE account_id = ? AND name_key = ?",
+		[JSON.stringify(worn), account["id"], character_name.strip_edges().to_lower()])
+	if not ok:
+		push_error("Could not save %s's equipment in %s: %s" % [character_name, path, _db.error_message])
 	return ok
 
 
@@ -492,6 +519,19 @@ func _migrate() -> bool:
 		""")
 		if not ok:
 			push_error("Could not add character health to %s: %s" % [path, _db.error_message])
+			_db.query("ROLLBACK")
+			return false
+	if version < 9:
+		# What each character wears on the character sheet, as a JSON object
+		# of slot -> item (see scripts/equipment.gd).
+		var ok: bool = _db.query("""
+			BEGIN;
+			ALTER TABLE characters ADD COLUMN equipment TEXT NOT NULL DEFAULT '{}';
+			PRAGMA user_version = 9;
+			COMMIT;
+		""")
+		if not ok:
+			push_error("Could not add character equipment to %s: %s" % [path, _db.error_message])
 			_db.query("ROLLBACK")
 			return false
 	return true
