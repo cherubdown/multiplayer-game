@@ -50,6 +50,28 @@ func _init() -> void:
 	_check(a.take(1) == { "item": "stone", "count": 4 } and a.slots[1] == null and a.take(1).is_empty(),
 		"takes a whole stack out")
 
+	var s := Inventory.new(4)
+	var t := Inventory.new(2)
+	s.slots[0] = { "item": "wood", "count": 7 }
+	_check(s.split_slot(0, s, 1) and s.slots[0]["count"] == 4 and s.slots[1] == { "item": "wood", "count": 3 },
+		"splitting moves half into an empty slot, the original keeping the bigger half")
+	_check(s.split_slot(0, s, 1) and s.slots[0]["count"] == 2 and s.slots[1]["count"] == 5,
+		"splitting onto the same item tops it up with half")
+	s.slots[2] = { "item": "stone", "count": 6 }
+	_check(not s.split_slot(1, s, 2) and s.slots[1]["count"] == 5 and s.slots[2]["count"] == 6,
+		"splitting onto a different item does nothing")
+	s.slots[3] = { "item": "wood", "count": 1 }
+	_check(not s.split_slot(3, s, 0) and s.slots[3]["count"] == 1, "a single item can't be split")
+	s.slots[3] = { "item": "wood", "count": 49 }
+	_check(s.split_slot(1, s, 3) and s.slots[3]["count"] == 50 and s.slots[1]["count"] == 4,
+		"splitting onto a nearly full stack moves only what fits")
+	_check(not s.split_slot(1, s, 3), "splitting onto a full stack does nothing")
+	_check(s.split_slot(2, t, 0) and t.slots[0] == { "item": "stone", "count": 3 } and s.slots[2]["count"] == 3,
+		"splits into another inventory")
+	s.slots[0] = { "item": "stone_axe", "count": 1 }
+	_check(not s.split_slot(0, t, 1) and not s.split_slot(1, s, 1) and not s.split_slot(1, s, 9),
+		"ignores tools, same and out of range slots")
+
 	for item in Items.IDS:
 		_check(Items.description(item) != "", "%s has a description" % item)
 		var icon := Items.icon(item)

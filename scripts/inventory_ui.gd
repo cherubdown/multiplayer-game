@@ -10,6 +10,9 @@ extends CanvasLayer
 ## another slot to move it (in the inventory, in the chest or between the two),
 ## or off the panels to drop it on the ground; with a chest open, the chest
 ## takes the crafting window's place and clicking a stack sends it across.
+## Holding Shift splits a stack instead: Shift-dragging moves half of it onto
+## the slot it's dropped on (empty, or the same item), and Shift-clicking moves
+## half into the first empty slot beside it.
 ## Right-click a tool to hold it (or put it away), then left-click in the world
 ## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
 ## with a weapon at the enemy in reach (see scripts/big_frog.gd).
@@ -210,6 +213,7 @@ func _open(chest: Node) -> void:
 	_craft_message.text = ""
 	_hint.text = "Drag stacks between slots, or click one to send it across. Drag off the panels to drop it." \
 		if chest != null else "Drag stacks to rearrange them, or off the panel to drop them. Right-click a tool to hold it."
+	_hint.text += "\nHold Shift while dragging or clicking a stack to split it in half."
 	_refresh()
 	_set_mouse_free(true)
 
@@ -441,8 +445,19 @@ func _on_tool_slot_input(event: InputEvent, item: String) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Clicking a stack with a chest open sends it to the other side.
+## Clicking a stack with a chest open sends it to the other side. Shift-
+## clicking splits half of it into the first empty slot of the same panel.
 func _on_slot_pressed(in_chest: bool, index: int) -> void:
+	if _splitting():
+		var slots: Array = _chest.contents if in_chest else Session.inventory
+		var free := slots.find(null)
+		if free < 0:
+			Sounds.play_ui(self, "error", -6.0)
+		elif in_chest:
+			_chest.move(true, index, true, free, true)
+		else:
+			Session.move_item(index, free, true)
+		return
 	if _chest == null:
 		return
 	if in_chest:
@@ -482,10 +497,16 @@ func _can_drop_on_slot(_at: Vector2, data, in_chest: bool) -> bool:
 
 
 func _drop_on_slot(_at: Vector2, data, in_chest: bool, index: int) -> void:
+	var split := _splitting()
 	if data["from_chest"] or in_chest:
-		_chest.move(data["from_chest"], data["slot"], in_chest, index)
+		_chest.move(data["from_chest"], data["slot"], in_chest, index, split)
 	else:
-		Session.move_item(data["slot"], index)
+		Session.move_item(data["slot"], index, split)
+
+
+## Whether Shift is held, so a move takes half the stack.
+func _splitting() -> bool:
+	return Input.is_key_pressed(KEY_SHIFT)
 
 
 func _can_drop_on_ground(_at: Vector2, data) -> bool:
