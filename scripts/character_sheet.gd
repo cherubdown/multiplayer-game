@@ -126,9 +126,9 @@ func _slot_button(slot: String) -> Button:
 			Items.description(item), "In your hand" if slot == "main_hand" else "Worn: " + slot_name(slot)]
 	button.gui_input.connect(_on_slot_input.bind(slot))
 	button.set_drag_forwarding(
-		_get_drag_data.bind(button, slot),
-		_can_drop.bind(slot),
-		_drop.bind(slot))
+		_slot_drag_data.bind(button, slot),
+		_can_drop_on.bind(slot),
+		_drop_on.bind(slot))
 	return button
 
 
@@ -147,7 +147,7 @@ func _on_slot_input(event: InputEvent, slot: String) -> void:
 # Dragged from here, the data is { "gear": slot }. Dropped here, an inventory
 # stack is { "from_chest": false, "slot": int } (see scripts/inventory_ui.gd).
 
-func _get_drag_data(_at: Vector2, button: Button, slot: String) -> Variant:
+func _slot_drag_data(_at: Vector2, button: Button, slot: String) -> Variant:
 	var item := item_in(slot)
 	if item == "":
 		return null
@@ -163,7 +163,7 @@ func _get_drag_data(_at: Vector2, button: Button, slot: String) -> Variant:
 	return { "gear": slot }
 
 
-func _can_drop(_at: Vector2, data, slot: String) -> bool:
+func _can_drop_on(_at: Vector2, data, slot: String) -> bool:
 	if not data is Dictionary:
 		return false
 	if data.has("gear"):
@@ -177,7 +177,7 @@ func _can_drop(_at: Vector2, data, slot: String) -> bool:
 	return fits(Session.inventory[index]["item"], slot)
 
 
-func _drop(_at: Vector2, data, slot: String) -> void:
+func _drop_on(_at: Vector2, data, slot: String) -> void:
 	if data.has("gear"):
 		Session.move_equipped(data["gear"], slot)
 	elif slot == "main_hand":
