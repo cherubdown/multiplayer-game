@@ -66,6 +66,10 @@ var _last_swing := -100000
 ## Whether the screen showing was opened as the inventory (not a chest), for
 ## the bag's sounds.
 var _bag_open := false
+## The count on the stack being dragged, and how many are in it, so it can
+## show the half that would move while Shift is held.
+var _drag_count: Label
+var _drag_total := 0
 
 
 func _ready() -> void:
@@ -90,6 +94,8 @@ func _watch_chest(node: Node) -> void:
 
 
 func _process(_delta: float) -> void:
+	if is_instance_valid(_drag_count):
+		_drag_count.text = str(_drag_amount(_drag_total))
 	var player := _local_player()
 	if _chest != null and (player == null or _distance(player, _chest) > get_parent().INTERACT_RANGE + 1.0):
 		_chest.close()
@@ -517,13 +523,21 @@ func _get_slot_drag_data(_at: Vector2, button: Button, slot, in_chest: bool, ind
 	icon.modulate.a = 0.85
 	preview.add_child(icon)
 	var count := Label.new()
-	count.text = str(slot["count"])
+	_drag_total = slot["count"]
+	count.text = str(_drag_amount(_drag_total))
 	count.position = Vector2(8, 8)
 	count.add_theme_constant_override("outline_size", 4)
 	count.add_theme_color_override("font_outline_color", Color.BLACK)
 	preview.add_child(count)
 	button.set_drag_preview(preview)
+	_drag_count = count
 	return { "from_chest": in_chest, "slot": index }
+
+
+## How many of a `total` stack a drop would move: half while Shift is held
+## (see Inventory.split_slot()), otherwise all of it.
+func _drag_amount(total: int) -> int:
+	return floori(total / 2.0) if _splitting() and total >= 2 else total
 
 
 func _can_drop_on_slot(_at: Vector2, data, in_chest: bool) -> bool:
