@@ -116,6 +116,32 @@ func move_slot(from: int, target, to: int) -> bool:
 	return true
 
 
+## Moves half the stack in slot `from` (rounded down, so the original keeps
+## the bigger half) to slot `to` of `target`, which may be this inventory. The
+## target slot must be empty or hold the same item, which is topped up with as
+## much of the half as fits. Returns whether anything changed.
+func split_slot(from: int, target, to: int) -> bool:
+	if not has_slot(from) or not target.has_slot(to) or slots[from] == null:
+		return false
+	if target == self and from == to:
+		return false
+	var stack: Dictionary = slots[from]
+	var other = target.slots[to]
+	var half: int = stack["count"] / 2
+	if half <= 0 or (other != null and other["item"] != stack["item"]):
+		return false
+	if other == null:
+		target.slots[to] = { "item": stack["item"], "count": half }
+		stack["count"] -= half
+		return true
+	var moved := mini(half, Items.max_stack(stack["item"]) - other["count"])
+	if moved <= 0:
+		return false
+	other["count"] += moved
+	stack["count"] -= moved
+	return true
+
+
 ## Empties a slot and returns what was in it, or {} if it was empty.
 func take(index: int) -> Dictionary:
 	if not has_slot(index) or slots[index] == null:
