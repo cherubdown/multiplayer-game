@@ -13,7 +13,9 @@ extends CanvasLayer
 ## Holding Shift splits a stack instead: Shift-dragging moves half of it onto
 ## the slot it's dropped on (empty, or the same item), and Shift-clicking moves
 ## half into the first empty slot beside it.
-## Right-click a tool to hold it (or put it away), then left-click in the world
+## Right-click a tool to hold it (or put it away), or drag it onto the hotbar
+## along the bottom of the screen and press its number (see
+## scripts/hotbar_bar.gd), then left-click in the world
 ## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
 ## with a weapon at the enemy in reach (see scripts/big_frog.gd).
 ## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
@@ -509,7 +511,9 @@ func _on_slot_pressed(in_chest: bool, index: int) -> void:
 # the stack there (merging or swapping); dropping anywhere off the panels puts
 # it on the ground. From the character sheet it's { "gear": slot }: dropped on
 # the inventory that takes it off, and off the panels drops it (or for the
-# main hand, puts the tool away).
+# main hand, puts the tool away). From the hotbar it's { "hotbar": index }:
+# dropped anywhere here that empties the hotbar slot (the tool itself never
+# left the inventory).
 
 func _get_slot_drag_data(_at: Vector2, button: Button, slot, in_chest: bool, index: int) -> Variant:
 	if slot == null:
@@ -541,12 +545,17 @@ func _drag_amount(total: int) -> int:
 
 
 func _can_drop_on_slot(_at: Vector2, data, in_chest: bool) -> bool:
+	if _is_hotbar_data(data):
+		return true
 	if _is_gear_data(data):
 		return not in_chest
 	return _is_slot_data(data) and (_chest != null or not (in_chest or data["from_chest"]))
 
 
 func _drop_on_slot(_at: Vector2, data, in_chest: bool, index: int) -> void:
+	if _is_hotbar_data(data):
+		Session.set_hotbar_slot(data["hotbar"], "")
+		return
 	if _is_gear_data(data):
 		_take_off(data["gear"], index)
 		return
@@ -563,12 +572,15 @@ func _splitting() -> bool:
 
 
 func _can_drop_on_ground(_at: Vector2, data) -> bool:
-	if _is_gear_data(data):
+	if _is_gear_data(data) or _is_hotbar_data(data):
 		return true
 	return _is_slot_data(data) and (_chest != null or not data["from_chest"])
 
 
 func _drop_on_ground(_at: Vector2, data) -> void:
+	if _is_hotbar_data(data):
+		Session.set_hotbar_slot(data["hotbar"], "")
+		return
 	if _is_gear_data(data):
 		if data["gear"] == "main_hand":
 			Session.hold("")
@@ -589,6 +601,10 @@ func _is_gear_data(data) -> bool:
 	return data is Dictionary and data.has("gear")
 
 
+func _is_hotbar_data(data) -> bool:
+	return data is Dictionary and data.get("hotbar") is int
+
+
 ## Takes off what's in a slot of the character sheet into inventory slot
 ## `index`.
 func _take_off(slot: String, index: int) -> void:
@@ -601,8 +617,9 @@ func _take_off(slot: String, index: int) -> void:
 func _build() -> void:
 	_prompt = Label.new()
 	_prompt.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_prompt.offset_top = -150
-	_prompt.offset_bottom = -110
+	# Above the hotbar (see scripts/hotbar_bar.gd).
+	_prompt.offset_top = -190
+	_prompt.offset_bottom = -150
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_prompt.add_theme_font_size_override("font_size", 22)
