@@ -114,6 +114,16 @@ To try two players on one machine, start one copy with `--host` and another with
 
 Movement is server-authoritative: each client only sends its input (`PlayerInput`), and the server runs the physics and replicates every player's position, rotation and velocity to everyone. Each peer picks the animation (idle, walk, run or jump) from that. Dedicated and headless servers never build the models.
 
+### Character sheet and gear
+
+Press **C** to see your character sheet beside your inventory, with an equipment slot for each piece of gear laid out like Diablo II's: helm, shoulders and amulet across the top, the main hand and off hand down the sides, chest in the middle, then hands, a ring, belt, the other ring and boots along the bottom, with leggings under the belt. **Tab** and **C** switch between the crafting window and the character sheet.
+
+Drag something wearable from your inventory onto the slot it fits (or right-click it) to put it on; what was in that slot goes back where it came from. Drag it back onto the inventory, or right-click it on the sheet, to take it off, or drag it off the panels to drop it. The main hand is the tool you're holding. The server checks every item fits its slot, and what each character wears is saved with them.
+
+There are no recipes for gear yet. To try the sheet, a placeholder piece for every slot (Leather Cap, Bone Amulet, Hide Pauldrons, Leather Tunic, Leather Gloves, Rope Belt, Hide Leggings, Leather Boots, two Copper Rings and a Wooden Buckler) lies on the ground in a ring a little further out from the spawn than the other test items. Gear doesn't do anything yet: it's only worn on the sheet, not shown on your character or counted as armor.
+
+The inventory, chest, crafting window and character sheet are drawn in old-school dark stone inside carved metal frames, all generated in code by `scripts/ui_style.gd`.
+
 ### Crafting and tools
 
 The inventory screen (**Tab**) has a **Crafting** window on its right. Each recipe shows what it makes and what it takes, with how many of each you have (green when you have enough, red when you don't). Press **Craft** to make it:

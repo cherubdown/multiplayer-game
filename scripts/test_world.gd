@@ -8,7 +8,8 @@ extends Node3D
 ## when it last left the world; a new character starts near the middle.
 ##
 ## Next to the spawn there's a test chest (on every peer) and some items on
-## the ground to pick up, which the server spawns and ItemSpawner replicates.
+## the ground to pick up (with a piece of placeholder gear for every slot of
+## the character sheet a little further out), which the server spawns and ItemSpawner replicates.
 ## Picked up items come back after a while so there's always something to try.
 ## Items players drop lie where they fell until someone picks them up (until
 ## the server restarts).
@@ -63,6 +64,18 @@ const TEST_ITEMS := [
 	["berries", 6, 4.7, 7.0],
 	["wood", 8, 5.4, 8.0],
 	["flint", 1, 5.9, 11.0],
+	# Placeholder gear to try the character sheet with, one for every slot.
+	["leather_cap", 1, 0.2, 13.0],
+	["bone_amulet", 1, 0.75, 13.0],
+	["hide_pauldrons", 1, 1.3, 13.0],
+	["leather_tunic", 1, 1.85, 13.0],
+	["leather_gloves", 1, 2.4, 13.0],
+	["rope_belt", 1, 2.95, 13.0],
+	["hide_leggings", 1, 3.5, 13.0],
+	["leather_boots", 1, 4.05, 13.0],
+	["copper_ring", 1, 4.6, 13.0],
+	["copper_ring", 1, 5.15, 13.0],
+	["wooden_buckler", 1, 5.7, 13.0],
 ]
 
 @onready var players: Node3D = $Players

@@ -196,6 +196,8 @@ func _check_race_migration() -> void:
 	_check(store.save_position("old", "Sven", Vector3(1.0, 2.0, 3.0), -0.5), "migrated database can save positions")
 	_check(store.load_discoveries("old", "Sven").is_empty(), "migrated characters have discovered nothing yet")
 	_check(store.save_discoveries("old", "Sven", { "wood": true }), "migrated database can save discoveries")
+	_check(store.load_equipment("old", "Sven").is_empty(), "migrated characters wear nothing")
+	_check(store.save_equipment("old", "Sven", { "helm": "leather_cap" }), "migrated database can save equipment")
 	store.close()
 
 

@@ -13,14 +13,19 @@ extends SceneTree
 ## and stone have both been found and is announced when it unlocks, gathers
 ## wood and stone to craft a stone axe, crafts a wood sword, checks a Big
 ## Frog lives in each frog area of the Meadows, chops
-## down the nearest tree with the axe and picks up its wood, and checks
-## the inventory, discovered recipes and health are still there after
+## down the nearest tree with the axe and picks up its wood, picks up a piece
+## of placeholder gear and puts it on and takes it off again on the character
+## sheet, and checks
+## the inventory, gear, discovered recipes and health are still there after
 ## re-entering the world, and that the
 ## player comes back where they stood, facing the same way. Exits non-zero on
 ## failure.
 ## Against a server started with --server-password=<password>, pass the same
 ## flag: the test first checks a wrong password is turned away.
 ## Pass --expect-seed=<text> to check the server sends that world seed.
+
+const Items := preload("res://scripts/items.gd")
+const Equipment := preload("res://scripts/equipment.gd")
 
 var _failures := 0
 
@@ -105,6 +110,7 @@ func _run() -> void:
 	if player != null:
 		await _check_inventory(world, player)
 		await _check_crafting(world, player)
+		await _check_gear(world, player)
 		# What re-entering the world should bring back.
 		_picked_item = "stone_axe"
 		_picked_count = _count(session.inventory, "stone_axe")
@@ -128,6 +134,8 @@ func _run() -> void:
 		"inventory is still there after re-entering the world")
 	_check(saved == [], "leaving the world clears the client's copy of the inventory")
 	_check("stone_axe" in session.recipes, "discovered recipes are still known after re-entering the world")
+	_check(_gear_item != "" and session.equipment.get(_gear_slot, "") == _gear_item,
+		"still wears the %s after re-entering the world" % _gear_item)
 	await create_timer(0.5).timeout
 	player = world.get_node_or_null("Players/%d" % root.multiplayer.get_unique_id())
 	_check(player != null, "server spawned our player again")
@@ -152,6 +160,50 @@ func _run() -> void:
 
 var _picked_item := ""
 var _picked_count := 0
+## The placeholder gear put on, and its slot, to check it's still worn after
+## re-entering the world.
+var _gear_item := ""
+var _gear_slot := ""
+
+
+## Picks up the nearest piece of placeholder gear, checks the server won't put
+## it in a slot it doesn't fit, puts it on, takes it off into a chosen
+## inventory slot and puts it back on.
+func _check_gear(world: Node, player: Node3D) -> void:
+	var session: Node = root.get_node("Session")
+	_check(session.equipment.is_empty(), "a new character wears nothing")
+	var pickup: Node3D = null
+	for node: Node3D in world.get_node("Items").get_children():
+		if Items.is_wearable(node.item) and not node.is_queued_for_deletion() and (pickup == null \
+				or node.global_position.distance_to(player.global_position) < pickup.global_position.distance_to(player.global_position)):
+			pickup = node
+	_check(pickup != null, "there is placeholder gear lying around")
+	if pickup == null:
+		return
+	var item: String = pickup.item
+	await _walk_to(player, pickup.global_position)
+	await _call_and_wait(session.inventory_changed, pickup.interact)
+	var slot := _find(session.inventory, item)
+	_check(slot >= 0, "picks up the %s" % Items.display_name(item))
+	if slot < 0:
+		return
+	var fits: String = Equipment.slot_for(item, session.equipment)
+	var wrong := "boots" if fits != "boots" else "helm"
+	session.equip(slot, wrong)
+	await create_timer(0.5).timeout
+	_check(session.equipment.is_empty() and _find(session.inventory, item) == slot,
+		"the server won't put the %s in the %s slot" % [item, wrong])
+
+	await _call_and_wait(session.inventory_changed, session.equip.bind(slot, fits))
+	_check(session.equipment.get(fits, "") == item and _count(session.inventory, item) == 0,
+		"puts the %s on in the %s slot" % [item, fits])
+	await _call_and_wait(session.inventory_changed, session.unequip.bind(fits, 15))
+	_check(session.equipment.is_empty() and session.inventory[15] != null and session.inventory[15]["item"] == item,
+		"takes the %s off into the slot it's dragged to" % item)
+	await _call_and_wait(session.inventory_changed, session.equip.bind(15, fits))
+	_check(session.equipment.get(fits, "") == item, "puts the %s back on" % item)
+	_gear_item = item
+	_gear_slot = fits
 
 
 func _check_inventory(world: Node, player: Node3D) -> void:
