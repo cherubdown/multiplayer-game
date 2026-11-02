@@ -1,19 +1,19 @@
 extends SceneTree
-## Checks player health, stamina and the Big Frog without a network: taking
+## Checks player health, stamina and frogs without a network: taking
 ## damage, dying, health coming back, sprinting and attacking using stamina,
-## poison wearing health down and wearing off, the frog turning towards
-## players no faster than it should, licking and poisoning players a way off
-## (unless they step out of the tongue's way), chasing and biting players
-## nearby (missing one bite in five) and leaving far ones alone, taking twelve wood sword hits to kill, and what it drops: Frog Meat
-## every time and Frog Bile now and then, popping out of it and bouncing to a
-## stop. Run from the project folder:
+## poison wearing health down and wearing off, a frog turning towards
+## players, chasing down and biting the player it was sent after (missing one
+## bite in four), going after someone else nearby once its player is gone and
+## giving up when there's nobody, dying to three wood sword hits or two stone
+## sword hits, and what it drops: Frog Meat now and then and Frog Bile
+## rarely, popping out of it and bouncing to a stop. Run from the project folder:
 ##   godot --headless --path . -s tests/test_combat.gd
 ## Exits non-zero if any check fails.
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
-const FROG_SCENE := preload("res://scenes/big_frog.tscn")
+const FROG_SCENE := preload("res://scenes/frog.tscn")
 const Player := preload("res://scripts/player.gd")
-const BigFrog := preload("res://scripts/big_frog.gd")
+const Frog := preload("res://scripts/frog.gd")
 const Items := preload("res://scripts/items.gd")
 const DropBounce := preload("res://scripts/drop_bounce.gd")
 
@@ -26,7 +26,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_check(Player.MAX_HEALTH == 50, "players have 50 health")
-	_check(BigFrog.MAX_HEALTH == 120, "a Big Frog has 120 health")
+	_check(Frog.MAX_HEALTH == 25, "a frog has 25 health")
 
 	# Outside any network this tree acts as the server, as the world does.
 	var world := Node3D.new()
@@ -43,7 +43,7 @@ func _run() -> void:
 
 	# A script that fails to load leaves plain nodes behind; don't go on.
 	var probe := PLAYER_SCENE.instantiate()
-	var loaded: bool = probe.get_script() == Player and FROG_SCENE.instantiate().get_script() == BigFrog
+	var loaded: bool = probe.get_script() == Player and FROG_SCENE.instantiate().get_script() == Frog
 	probe.free()
 	_check(loaded, "the player and frog scripts load")
 	if loaded:
@@ -63,15 +63,16 @@ func _check_loot() -> void:
 	var bile := 0
 	var rolls := 4000
 	for roll in rolls:
-		for drop in BigFrog.roll_loot():
+		for drop in Frog.roll_loot():
 			_check(drop[1] == 1, "drops one at a time (%s)" % [drop])
 			if drop[0] == "frog_meat":
 				meat += 1
 			elif drop[0] == "frog_bile":
 				bile += 1
-	_check(meat == rolls, "always drops Frog Meat (%d of %d)" % [meat, rolls])
-	var chance := float(bile) / rolls
-	_check(chance > 0.12 and chance < 0.18, "drops Frog Bile about 15%% of the time (%.1f%%)" % (chance * 100.0))
+	var chance := float(meat) / rolls
+	_check(chance > 0.26 and chance < 0.34, "drops Frog Meat about 30%% of the time (%.1f%%)" % (chance * 100.0))
+	chance = float(bile) / rolls
+	_check(chance > 0.03 and chance < 0.07, "drops Frog Bile about 5%% of the time (%.1f%%)" % (chance * 100.0))
 	for item in ["frog_meat", "frog_bile"]:
 		_check(Items.is_valid(item), "%s is an item" % item)
 
@@ -86,19 +87,25 @@ func spawn_item(item: String, count: int, spot: Vector3, from := Vector3.INF) ->
 	var catcher := Node3D.new()
 	catcher.set_script(catcher_script)
 	root.add_child(catcher)
-	var frog := FROG_SCENE.instantiate()
-	frog.world = catcher
-	frog.position = Vector3(-40.0, 0.0, 0.0)
-	catcher.add_child(frog)
-	await physics_frame
-	frog.take_damage(BigFrog.MAX_HEALTH, 0)
+	# Kills frogs until one drops some meat.
+	var frog: Node3D = null
+	for attempt in 60:
+		frog = FROG_SCENE.instantiate()
+		frog.world = catcher
+		frog.position = Vector3(-40.0, 0.0, 0.0)
+		catcher.add_child(frog)
+		frog.take_damage(Frog.MAX_HEALTH, 0)
+		if catcher.dropped.any(func(d: Array) -> bool: return d[0] == "frog_meat"):
+			break
+		frog.free()
+		frog = null
 	var meat_drop: Array = catcher.dropped.filter(func(d: Array) -> bool: return d[0] == "frog_meat")
 	_check(meat_drop.size() == 1, "a killed frog drops its meat (%s)" % [catcher.dropped])
 	if meat_drop.size() == 1:
 		var spot: Vector3 = meat_drop[0][2]
 		var from: Vector3 = meat_drop[0][3]
 		var gap := Vector2(spot.x - frog.position.x, spot.z - frog.position.z).length()
-		_check(gap >= BigFrog.LOOT_SPREAD.x - 0.01 and gap <= BigFrog.LOOT_SPREAD.y + 0.01,
+		_check(gap >= Frog.LOOT_SPREAD.x - 0.01 and gap <= Frog.LOOT_SPREAD.y + 0.01,
 			"lands a little way off the frog (%.2f m)" % gap)
 		_check(from.is_finite() and from.y > frog.position.y and Vector2(from.x - frog.position.x, from.z - frog.position.z).length() < 0.1,
 			"flies out of the frog's body (%s)" % [from])
@@ -239,127 +246,84 @@ func _check_poison(players: Node3D) -> void:
 func _check_frog(world: Node3D, players: Node3D) -> void:
 	var frog := _add_frog(world, Vector3.ZERO)
 	_check(frog.prompt_for("").begins_with("Hold a sword"), "says to hold a sword: %s" % frog.prompt_for(""))
-	_check(frog.prompt_for("wood_sword").contains("120/120"), "says how much health it has: %s" % frog.prompt_for("wood_sword"))
+	_check(frog.prompt_for("wood_sword").contains("25/25"), "says how much health it has: %s" % frog.prompt_for("wood_sword"))
 	_check(frog.prompt_for("stone_axe").begins_with("Hold a sword"), "an axe isn't a weapon")
 
-	# Someone far off is left alone.
-	var far := _add_player(players, "3", Vector3(BigFrog.AGGRO_RANGE + 6.0, 0.0, 0.0))
-	await _wait(2.0)
-	_check(far.health == Player.MAX_HEALTH, "doesn't go after a player far away")
-	far.queue_free()
-
-	# Someone a way off gets licked and poisoned, but not straight away: the
-	# frog crouches first and the tongue takes a moment to get there.
-	var licked := _add_player(players, "8", Vector3(0.0, 0.0, -(BigFrog.LICK_RANGE - 1.0)))
-	var hurts := []
-	licked.health_changed.connect(func(new: int, old: int) -> void: hurts.append(old - new))
-	for step in 180:
-		if frog.is_licking():
-			break
-		await physics_frame
-	await _wait(BigFrog.LICK_WINDUP * 0.5)
-	_check(frog.is_licking() and hurts.is_empty(), "winds up a lick before it lands (licking %s, %s)" % [frog.is_licking(), hurts])
-	await _wait(BigFrog.LICK_WINDUP * 0.5 + BigFrog.LICK_OUT + 0.1)
-	_check(hurts.size() > 0 and hurts[0] == BigFrog.LICK_DAMAGE, "licks a player %.0f m off for %d (%s)" % [BigFrog.LICK_RANGE - 1.0, BigFrog.LICK_DAMAGE, hurts])
-	_check(licked.poisoned, "the lick poisons them")
-	await _wait(BigFrog.POISON_SECONDS + 1.0)
-	_check(hurts.count(BigFrog.POISON_DAMAGE) >= 4, "the poison wears their health down (%s)" % [hurts])
-	licked.queue_free()
-	frog.queue_free()
-	await process_frame
-
-	# Someone who steps aside once the tongue's on its way isn't caught.
-	frog = _add_frog(world, Vector3.ZERO)
-	var dodger := _add_player(players, "9", Vector3(0.0, 0.0, -6.0))
-	var dodged := []
-	dodger.health_changed.connect(func(new: int, old: int) -> void: dodged.append(old - new))
-	for step in 120:
-		if frog._lick_reach > 0.0:
-			break
-		await physics_frame
-	_check(frog._lick_reach > 0.0, "lets its tongue go at someone a way off")
-	dodger.position.x += 2.0
-	await _wait(BigFrog.LICK_OUT + 0.2)
-	_check(dodged.is_empty() and not dodger.poisoned, "misses someone who steps aside (%s)" % [dodged])
+	# It turns towards the player it's after, quickly but not instantly.
+	var behind := _add_player(players, "3", Vector3(0.0, 0.0, 6.0))
+	frog.prey = behind
 	frog.rotation.y = 0.0
-	var mouth: Vector3 = frog.global_position
-	_check(frog.tongue_catches(mouth + Vector3(0.0, 0.0, -6.0), 6.5) and not frog.tongue_catches(mouth + Vector3(2.0, 0.0, -6.0), 6.5)
-		and not frog.tongue_catches(mouth + Vector3(0.0, 0.0, 6.0), 6.5), "the tongue only catches what's in its way")
-	dodger.queue_free()
-	frog.queue_free()
-	await process_frame
-
-	# It turns towards someone behind it, but only so fast.
-	frog = _add_frog(world, Vector3.ZERO)
-	var behind := _add_player(players, "10", Vector3(0.0, 0.0, 3.0))
-	await _wait(0.25)
+	await _wait(0.1)
 	var turned := absf(rad_to_deg(frog.rotation.y))
-	_check(turned > 5.0 and turned <= BigFrog.TURN_DEGREES * 0.3 + 1.0,
-		"turns towards someone behind it at no more than %.0f degrees a second (%.0f in 0.25 s)" % [BigFrog.TURN_DEGREES, turned])
-	await _wait(180.0 / BigFrog.TURN_DEGREES)
-	_check(frog._off_facing(behind.global_position) < 5.0, "and ends up facing them (%.0f degrees off)" % frog._off_facing(behind.global_position))
+	_check(turned > 5.0 and turned <= Frog.TURN_DEGREES * 0.15 + 1.0,
+		"turns towards someone behind it at no more than %.0f degrees a second (%.0f in 0.1 s)" % [Frog.TURN_DEGREES, turned])
+	await _wait(0.6)
+	_check(frog._off_facing(behind.global_position) < 10.0, "and ends up facing them (%.0f degrees off)" % frog._off_facing(behind.global_position))
 	behind.queue_free()
 	frog.queue_free()
 	await process_frame
 
-	# One bite in five misses.
+	# One bite in four misses.
 	var hits := 0
 	for roll in 4000:
-		if BigFrog.bite_hits():
+		if Frog.bite_hits():
 			hits += 1
 	var missed := 1.0 - hits / 4000.0
-	_check(missed > 0.17 and missed < 0.23, "misses about 20%% of bites (%.1f%%)" % (missed * 100.0))
+	_check(missed > 0.21 and missed < 0.29, "misses about 25%% of bites (%.1f%%)" % (missed * 100.0))
 
+	# The player it was sent after, a way off, is chased down and bitten.
+	var prey := _add_player(players, "4", Vector3(10.0, 0.0, 0.0))
 	frog = _add_frog(world, Vector3.ZERO)
+	frog.prey = prey
 	frog.bite_miss_chance = 0.0
-
-	# Someone close is chased down and bitten.
-	var near := _add_player(players, "4", Vector3(4.5, 0.0, 0.0))
 	var bites := []
-	near.health_changed.connect(func(new: int, old: int) -> void:
-		if old - new == BigFrog.DAMAGE:
+	prey.health_changed.connect(func(new: int, old: int) -> void:
+		if old - new == Frog.DAMAGE:
 			bites.append(old - new))
 	await _wait(6.0)
-	_check(bites.size() > 0, "hops over and bites a player nearby, %d at a time (health %d)" % [BigFrog.DAMAGE, near.health])
-	_check(frog.gap_to(near.global_position) < BigFrog.BITE_REACH + 0.6, "ends up next to them (%.2f m)" % frog.gap_to(near.global_position))
+	_check(bites.size() > 0, "hops over and bites the player it's after, %d at a time (health %d)" % [Frog.DAMAGE, prey.health])
+	_check(frog.gap_to(prey.global_position) < Frog.BITE_REACH + 0.6, "ends up next to them (%.2f m)" % frog.gap_to(prey.global_position))
+	_check(bites.size() <= ceili(6.0 / Frog.BITE_SECONDS), "bites no more than every %.1f s (%d bites)" % [Frog.BITE_SECONDS, bites.size()])
 
-	# A player running away past the frog's leash gets away.
-	near.position = Vector3(BigFrog.LEASH + 10.0, 0.0, 0.0)
-	await _wait(0.5)
-	near.restore_health()
-	var health: int = near.health
-	await _wait(2.0)
-	_check(near.health == health, "gives up on a player past its leash")
+	# Its player gone, it goes after someone else nearby.
+	var other := _add_player(players, "9", frog.position + Vector3(0.0, 0.0, 5.0))
+	prey.queue_free()
+	await _wait(3.0)
+	_check(is_instance_valid(frog) and frog.gap_to(other.global_position) < Frog.BITE_REACH + 0.6,
+		"goes after someone else nearby once its player is gone")
 
-	# Twelve hits with a wood sword kill it.
+	# Three hits with a wood sword kill it, and it goes away.
 	var died := []
 	frog.killed.connect(func() -> void: died.append(true))
 	var damage := Items.attack_damage("wood_sword")
-	_check(frog.take_damage(damage, 0) and frog.health == BigFrog.MAX_HEALTH - damage and frog.is_alive(), "one hit takes %d off" % damage)
-	_check(frog.prompt_for("wood_sword").contains("110/120"), "shows its health going down: %s" % frog.prompt_for("wood_sword"))
-	for hit in 10:
-		frog.take_damage(damage, 0)
-	_check(frog.is_alive() and frog.health == damage, "still alive after eleven hits (%d)" % frog.health)
-	_check(frog.take_damage(damage, 0) and frog.health == 0 and not frog.is_alive(), "the twelfth hit kills it")
+	_check(frog.take_damage(damage, 0) and frog.health == Frog.MAX_HEALTH - damage and frog.is_alive(), "one hit takes %d off" % damage)
+	_check(frog.prompt_for("wood_sword").contains("15/25"), "shows its health going down: %s" % frog.prompt_for("wood_sword"))
+	frog.take_damage(damage, 0)
+	_check(frog.is_alive(), "still alive after two wood sword hits (%d)" % frog.health)
+	_check(frog.take_damage(damage, 0) and not frog.is_alive(), "the third hit kills it")
 	_check(died.size() == 1, "it says it died")
 	_check(not frog.take_damage(damage, 0) and died.size() == 1, "can't hit a dead frog")
 	_check(frog.prompt_for("wood_sword") == "", "nothing to say about a dead frog")
-	await _wait(BigFrog.DEATH_SECONDS + 0.3)
+	await _wait(Frog.DEATH_SECONDS + 0.3)
 	_check(not is_instance_valid(frog), "a dead frog goes away")
-	near.queue_free()
+	other.queue_free()
+	await process_frame
 
-	# A frog that kills someone leaves them be for a while.
-	var victim := _add_player(players, "5", Vector3(0.0, 0.0, -2.0))
-	victim.health = BigFrog.DAMAGE
-	victim.killed.connect(func(_by: String) -> void: victim.restore_health())
+	# Two stone sword hits do it too.
+	frog = _add_frog(world, Vector3(20.0, 0.0, 20.0))
+	frog.take_damage(Items.attack_damage("stone_sword"), 0)
+	_check(frog.is_alive(), "survives one stone sword hit")
+	frog.take_damage(Items.attack_damage("stone_sword"), 0)
+	_check(not frog.is_alive(), "two stone sword hits kill it")
+	await _wait(Frog.DEATH_SECONDS + 0.3)
+
+	# With nobody to chase, it gives up and goes away.
+	var far := _add_player(players, "5", Vector3(Frog.AGGRO_RANGE + 10.0, 0.0, 0.0))
 	frog = _add_frog(world, Vector3.ZERO)
-	frog.bite_miss_chance = 0.0
-	await _wait(2.5)
-	_check(victim.health == Player.MAX_HEALTH, "a bite can kill a player (who comes back at full health)")
-	await _wait(2.5)
-	_check(victim.health == Player.MAX_HEALTH, "the frog leaves them alone after killing them")
-	frog.queue_free()
-	victim.queue_free()
+	await _wait(Frog.GIVE_UP_SECONDS + 1.0)
+	_check(not is_instance_valid(frog), "gives up and goes away when nobody is near")
+	far.queue_free()
+	await process_frame
 
 
 func _add_player(players: Node3D, peer: String, at: Vector3) -> Node3D:
@@ -375,7 +339,6 @@ func _add_frog(world: Node3D, at: Vector3) -> Node3D:
 	var frog := FROG_SCENE.instantiate()
 	frog.world = world
 	frog.position = at
-	frog.home = at
 	world.add_child(frog)
 	return frog
 

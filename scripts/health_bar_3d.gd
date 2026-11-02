@@ -1,7 +1,7 @@
 extends MeshInstance3D
 ## A small health bar that floats in the world and always faces the camera,
 ## drawn over everything like the nameplates. Shows above enemies (see
-## scripts/big_frog.gd) and other players. Set `fraction` (0 to 1) to fill it.
+## scripts/frog.gd) and other players. Set `fraction` (0 to 1) to fill it.
 
 const SHADER := """
 shader_type spatial;

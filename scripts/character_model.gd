@@ -652,7 +652,7 @@ func _band(y0: float, y1: float, size: Vector2, belly: float) -> ArrayMesh:
 
 
 ## The shared hand-painted material for a pattern in a color, also used by
-## the Big Frog (scripts/big_frog.gd). The shade and
+## frogs (scripts/frog.gd). The shade and
 ## light are painted in hue-shifted, the way an illustrator would: shadows
 ## cooler and richer, lights warmer.
 static func paint(pattern: int, color: Color, grain := Vector3.UP) -> ShaderMaterial:

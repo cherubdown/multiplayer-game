@@ -11,8 +11,8 @@ extends SceneTree
 ## picks it up again, puts it in the test chest and takes it back, picks food
 ## off the nearest plant, checks the stone axe recipe stays locked until wood
 ## and stone have both been found and is announced when it unlocks, gathers
-## wood and stone to craft a stone axe, crafts a wood sword, checks a Big
-## Frog lives in each frog area of the Meadows, chops
+## wood and stone to craft a stone axe, crafts a wood sword, fights off a
+## frog wave (as a host; the servers here run with --no-frog-waves), chops
 ## down the nearest tree with the axe and picks up its wood, picks up a piece
 ## of placeholder gear and puts it on and takes it off again on the character
 ## sheet, and checks
@@ -401,8 +401,8 @@ func _check_crafting(world: Node, player: Node3D) -> void:
 		_check(_count(session.inventory, "wood") == wood + amount, "picks up the tree's %d wood" % amount)
 
 
-## Gathers wood for a wood sword, crafts it and holds it, and checks there's a
-## Big Frog in each frog area of the Meadows, at full health.
+## Gathers wood for a wood sword, crafts it and holds it, and as a host sends
+## a wave of frogs at the player and kills one with it.
 func _check_fighting(world: Node, player: Node3D) -> void:
 	var session: Node = root.get_node("Session")
 	var hud: Node = null
@@ -449,22 +449,39 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 	await _call_and_wait(session.held_changed, session.use_hotbar.bind(1))
 	_check(session.held_item == "wood_sword", "hotbar slot 2 swaps the sword back in hand")
 
-	# Big Frogs live out in their areas of the Meadows, one in each when the
-	# world starts, too tough to take on with a wood sword in this test.
-	var areas: Array[Vector3] = world.terrain.gen.frog_areas()
-	var frogs: Array = world.get_node("Enemies").get_children()
-	_check(frogs.size() == areas.size() and areas.size() > 0,
-		"there is a Big Frog in each of the %d frog areas (%d)" % [areas.size(), frogs.size()])
-	for frog: Node3D in frogs:
-		var nearest := INF
-		for at in areas:
-			nearest = minf(nearest, Vector2(frog.global_position.x - at.x, frog.global_position.z - at.z).length())
-		_check(nearest < world.terrain.gen.FROG_AREA_RADIUS + frog.WANDER * 2.0 + 1.0,
-			"a Big Frog sits in its area (%.1f m from the middle)" % nearest)
-		_check(frog.health == 120, "the Big Frog has 120 health (%d)" % frog.health)
-		_check(Vector2(frog.global_position.x, frog.global_position.z).length() > 30.0,
-			"the Big Frog is well away from the spawn")
-
+	# Frog waves are off for this test, so nothing interrupts it. As a host
+	# the world is ours, so send one wave and fight it.
+	var enemies: Node = world.get_node("Enemies")
+	_check(enemies.get_child_count() == 0, "no frogs come with --no-frog-waves (%d)" % enemies.get_child_count())
+	if not world.multiplayer.is_server():
+		return
+	var wave: Array = world.spawn_frog_wave(player)
+	_check(wave.size() >= world.FROG_WAVE_SIZE - 2, "a frog wave puts %d frogs around the player (%d)" % [world.FROG_WAVE_SIZE, wave.size()])
+	for frog: Node3D in wave:
+		var gap := Vector2(frog.global_position.x - player.global_position.x, frog.global_position.z - player.global_position.z).length()
+		_check(absf(gap - world.FROG_WAVE_RADIUS) < 3.5, "a frog starts in the ring around the player (%.1f m)" % gap)
+		_check(frog.health == 25 and frog.prey == player, "the frog has 25 health and is after the player")
+	# They hop in; hit the first one to get close until it dies.
+	var target: Node3D = null
+	var deadline := Time.get_ticks_msec() + 8000
+	while target == null and Time.get_ticks_msec() < deadline:
+		await process_frame
+		for frog: Node3D in wave:
+			if is_instance_valid(frog) and frog.gap_to(player.global_position) < frog.REACH:
+				target = frog
+				break
+	_check(target != null, "the frogs come at the player")
+	if target != null:
+		for hit in 4:
+			if not is_instance_valid(target) or not target.is_alive():
+				break
+			var at := target.global_position - player.global_position
+			target.attack(atan2(-at.x, -at.z))
+			await create_timer(0.6).timeout
+		_check(not is_instance_valid(target) or not target.is_alive(), "three wood sword hits kill a frog")
+	for frog: Node in enemies.get_children():
+		frog.queue_free()
+	await create_timer(0.3).timeout
 
 ## The nearest test item or dropped stack of `item`, or null.
 func _nearest_pickup(world: Node, player: Node3D, item: String) -> Node3D:

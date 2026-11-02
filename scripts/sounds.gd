@@ -47,7 +47,7 @@ const SOUNDS := {
 	"drop": { "variants": 3, "volume": -9.0, "range": 25.0 },
 	"bounce": { "variants": 3, "volume": -14.0, "range": 20.0 },
 	"pickup": { "variants": 3, "volume": -10.0, "range": 15.0 },
-	# The Big Frog.
+	# Frogs.
 	"frog_hop": { "variants": 3, "volume": -10.0, "range": 35.0 },
 	"frog_croak": { "variants": 3, "volume": -6.0, "range": 55.0 },
 	"frog_bite": { "variants": 3, "volume": -4.0, "range": 40.0 },

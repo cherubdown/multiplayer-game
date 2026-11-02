@@ -3,7 +3,7 @@ extends Label3D
 ## up and fades away: red for damage, green for healing, and pale grey for
 ## "Miss" when an attack misses. Players and enemies call pop() on every peer
 ## from an RPC the server sends when their health changes (see
-## Player.take_damage() and BigFrog.take_damage()).
+## Player.take_damage() and Frog.take_damage()).
 ##
 ## Drawn over everything and always facing the camera, like the nameplates.
 ## It's added to the viewport rather than to whatever was hit, so it stays
