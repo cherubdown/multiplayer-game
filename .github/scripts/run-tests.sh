@@ -77,7 +77,7 @@ echo "::group::Crafting"
 "$GODOT" --headless --path . -s tests/test_crafting.gd
 echo "::endgroup::"
 
-echo "::group::Health and the Big Frog"
+echo "::group::Health and frogs"
 "$GODOT" --headless --path . -s tests/test_combat.gd
 echo "::endgroup::"
 
@@ -86,13 +86,13 @@ echo "::group::Trees and rocks"
 echo "::endgroup::"
 
 echo "::group::Login and character select against a listen-server host"
-timeout 120 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --port="$PORT" --accounts=user://test_host_accounts.db
+timeout 120 "$GODOT" --headless --path . -s tests/e2e_client.gd -- --host --no-frog-waves --port="$PORT" --accounts=user://test_host_accounts.db
 echo "::endgroup::"
 
 echo "::group::Joining a dedicated server that has no password"
 open_log="$(mktemp)"
 rm -f "$HOME/.local/share/godot/app_userdata/Multiplayer Survival Game/test_open_accounts.db"
-timeout 150 "$GODOT" --headless --path . --server --port="$((PORT + 2))" --accounts=user://test_open_accounts.db --seed="open world" >"$open_log" 2>&1 &
+timeout 150 "$GODOT" --headless --path . --server --port="$((PORT + 2))" --accounts=user://test_open_accounts.db --seed="open world" --no-frog-waves >"$open_log" 2>&1 &
 open_pid=$!
 for _ in $(seq 1 30); do
   grep -q "Dedicated server listening" "$open_log" && break
@@ -110,7 +110,7 @@ fi
 
 echo "::group::Server password, login and character select against a dedicated server"
 server_log="$(mktemp)"
-timeout 150 "$GODOT" --headless --path . --server --port="$((PORT + 1))" --accounts=user://test_server_accounts.db --server-password="let me in" >"$server_log" 2>&1 &
+timeout 150 "$GODOT" --headless --path . --server --port="$((PORT + 1))" --accounts=user://test_server_accounts.db --server-password="let me in" --no-frog-waves >"$server_log" 2>&1 &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 for _ in $(seq 1 30); do

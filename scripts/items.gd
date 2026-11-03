@@ -10,7 +10,7 @@ extends RefCounted
 ## mouse button. Its "type" says what it's good for (see scripts/harvestables.gd
 ## for what each type can break). A tool with an "attack" in its "tool" entry
 ## is a weapon: that's how much health one hit takes off an enemy (see
-## scripts/big_frog.gd).
+## scripts/frog.gd).
 ##
 ## An item with an "equip" entry can be worn in that slot of the character
 ## sheet (see scripts/equipment.gd): "helm", "amulet", "shoulders", "chest",
@@ -74,14 +74,14 @@ const INFO := {
 	},
 	"frog_meat": {
 		"name": "Frog Meat",
-		"description": "A slab of rubbery meat from a Big Frog. Every frog you kill drops some.",
+		"description": "A slab of rubbery meat from a frog. About one frog in three has any worth taking.",
 		"max_stack": 50,
 		"color": Color(0.86, 0.5, 0.46),
 		"shape": "meat",
 	},
 	"frog_bile": {
 		"name": "Frog Bile",
-		"description": "A vial of a Big Frog's poisonous bile. Only some frogs have any worth taking.",
+		"description": "A vial of a frog's poisonous bile. Only the odd frog has any worth taking.",
 		"max_stack": 50,
 		"color": Color(0.55, 0.85, 0.2),
 		"shape": "vial",

@@ -21,12 +21,12 @@ extends Node3D
 ## scripts/harvestables.gd), which the server drops on the ground here. What
 ## comes off a tree, a rock or a dead frog pops out of it and bounces.
 ##
-## Big Frogs live in a few areas of the Meadows picked from the seed (see
-## WorldGen.frog_areas() and scripts/big_frog.gd). The server puts a frog in
-## each area when the world starts, then every FROG_SPAWN_SECONDS (an hour,
-## real time) each area gets another, up to FROG_AREA_MAX at once.
-## EnemySpawner replicates them. Players a frog kills come back at the spawn
-## with full health.
+## Frogs come in waves (see scripts/frog.gd): every FROG_WAVE_SECONDS the
+## server puts FROG_WAVE_SIZE of them in a ring FROG_WAVE_RADIUS around each
+## living player, and they hop in and bite. A player never has more than
+## FROG_MAX_PER_PLAYER after them at once. EnemySpawner replicates them.
+## Players the frogs kill come back at the spawn with full health. Start the
+## server (or the test) with --no-frog-waves to keep them away.
 
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PICKUP_SCENE := preload("res://scenes/item_pickup.tscn")
@@ -34,7 +34,7 @@ const CHEST_SCENE := preload("res://scenes/chest.tscn")
 const InventoryUI := preload("res://scripts/inventory_ui.gd")
 const Forage := preload("res://scripts/forage.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
-const FROG_SCENE := preload("res://scenes/big_frog.tscn")
+const FROG_SCENE := preload("res://scenes/frog.tscn")
 const HUD := preload("res://scripts/hud.gd")
 const WorldGen := preload("res://scripts/world_gen.gd")
 
@@ -50,10 +50,12 @@ const RESPAWN_SECONDS := 60.0
 ## Where the test chest stands, as an angle and distance from the middle of
 ## the Meadows (players spawn 4 m out).
 const CHEST_SPOT := Vector2(0.0, 7.0)
-## Seconds between frogs turning up in each frog area (an hour), and how many
-## can live in one area at once.
-const FROG_SPAWN_SECONDS := 3600.0
-const FROG_AREA_MAX := 3
+## Frog waves: seconds between them, how many frogs in each, how far from
+## the player the ring is, and how many frogs can be after one player at once.
+const FROG_WAVE_SECONDS := 10.0
+const FROG_WAVE_SIZE := 10
+const FROG_WAVE_RADIUS := 12.0
+const FROG_MAX_PER_PLAYER := 40
 ## Items lying around the spawn: item, count, angle, distance.
 const TEST_ITEMS := [
 	["wood", 5, 0.6, 6.0],
@@ -86,9 +88,8 @@ const TEST_ITEMS := [
 var forage: Forage
 ## The trees and rocks, rebuilt with the terrain.
 var harvestables: Harvestables
-## Server side: the middles of the areas Big Frogs live in.
-var frog_areas: Array[Vector3] = []
-var _frog_timer: Timer
+## Server side: whether frog waves come (not with --no-frog-waves).
+var frog_waves := true
 
 
 func _ready() -> void:
@@ -108,6 +109,13 @@ func _ready() -> void:
 	autosave.autostart = true
 	autosave.timeout.connect(Session.save_positions)
 	add_child(autosave)
+	frog_waves = not ("--no-frog-waves" in OS.get_cmdline_args() + OS.get_cmdline_user_args())
+	if frog_waves:
+		var frog_timer := Timer.new()
+		frog_timer.wait_time = FROG_WAVE_SECONDS
+		frog_timer.autostart = true
+		frog_timer.timeout.connect(spawn_frog_waves)
+		add_child(frog_timer)
 	var in_world := Session.players_in_world()
 	for id in in_world:
 		_add_player(id, in_world[id], Session.race_of(id))
@@ -124,16 +132,6 @@ func _build_terrain(seed_text: String) -> void:
 	if multiplayer.is_server() and items.get_child_count() == 0:
 		for spot in TEST_ITEMS:
 			_spawn_pickup(spot)
-	if multiplayer.is_server():
-		frog_areas = terrain.gen.frog_areas()
-		if enemies.get_child_count() == 0:
-			spawn_frogs()
-		if _frog_timer == null:
-			_frog_timer = Timer.new()
-			_frog_timer.wait_time = FROG_SPAWN_SECONDS
-			_frog_timer.autostart = true
-			_frog_timer.timeout.connect(spawn_frogs)
-			add_child(_frog_timer)
 
 
 ## Server side: whether a peer's player is close enough to `point` to use
@@ -245,31 +243,51 @@ func _respawn_later(spot: Array) -> void:
 		_spawn_pickup(spot)
 
 
-## Server side: a new Big Frog in every frog area that has fewer than
-## FROG_AREA_MAX alive, each at its own spot in the area, clear of trees and
-## rocks.
-func spawn_frogs() -> void:
-	var alive := {}
+## Server side: a wave of frogs around every living player.
+func spawn_frog_waves() -> void:
+	# A client's world starts out offline, where it looks like the server.
+	if not multiplayer.is_server() or multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
+		return
+	for player: Node3D in players.get_children():
+		if player.health > 0:
+			spawn_frog_wave(player)
+
+
+## Server side: FROG_WAVE_SIZE frogs in a ring FROG_WAVE_RADIUS around
+## `player`, facing in and after them, but never more than
+## FROG_MAX_PER_PLAYER after them at once. Spots in a tree or a rock move in
+## or out a little; spots in the sea are skipped. Returns the new frogs.
+func spawn_frog_wave(player: Node3D) -> Array:
+	var spawned := []
+	if terrain.gen == null:
+		return spawned
+	var after := 0
 	for frog: Node in enemies.get_children():
-		if frog.is_alive():
-			alive[frog.area] = alive.get(frog.area, 0) + 1
-	for area in frog_areas.size():
-		if alive.get(area, 0) >= FROG_AREA_MAX:
-			continue
-		var middle := frog_areas[area]
-		var spot := Vector3(middle.x, 0.0, middle.z)
-		for attempt in 20:
-			var offset := Vector2.from_angle(randf() * TAU) * WorldGen.FROG_AREA_RADIUS * sqrt(randf())
-			spot = Vector3(middle.x + offset.x, 0.0, middle.z + offset.y)
-			if not harvestables.occupied(spot.x, spot.z, 1.0):
+		if frog.is_alive() and frog.prey == player:
+			after += 1
+	var count := mini(FROG_WAVE_SIZE, FROG_MAX_PER_PLAYER - after)
+	var centre := player.global_position
+	var start := randf() * TAU
+	for i in count:
+		var dir := Vector2.from_angle(start + TAU * i / FROG_WAVE_SIZE)
+		var spot := Vector3.ZERO
+		for nudge in [0.0, 1.5, -1.5, 3.0, -3.0]:
+			var at: Vector2 = Vector2(centre.x, centre.z) + dir * (FROG_WAVE_RADIUS + nudge)
+			spot = Vector3(at.x, 0.0, at.y)
+			if harvestables == null or not harvestables.occupied(spot.x, spot.z, 0.6):
 				break
-		spot.y = terrain.ground_height(spot.x, spot.z) + 0.5
+		var ground: float = terrain.ground_height(spot.x, spot.z)
+		if ground < WorldGen.SEA_LEVEL:
+			continue
+		spot.y = ground + 0.3
 		var frog := FROG_SCENE.instantiate()
 		frog.world = self
-		frog.area = area
+		frog.prey = player
 		frog.position = spot
-		frog.home = spot
+		frog.rotation.y = atan2(-(centre.x - spot.x), -(centre.z - spot.z))
 		enemies.add_child(frog, true)
+		spawned.append(frog)
+	return spawned
 
 
 ## Server side: a player died. They come back at the spawn with full health,

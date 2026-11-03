@@ -17,7 +17,7 @@ extends CanvasLayer
 ## along the bottom of the screen and press its number (see
 ## scripts/hotbar_bar.gd), then left-click in the world
 ## to swing it at the tree or rock in reach (see scripts/harvestables.gd), or
-## with a weapon at the enemy in reach (see scripts/big_frog.gd).
+## with a weapon at the enemy in reach (see scripts/frog.gd).
 ## Hovering a stack says what it is. Esc, Tab or E closes the screen again.
 ##
 ## C shows the character sheet beside the inventory instead of the crafting
@@ -34,7 +34,7 @@ extends CanvasLayer
 const Items := preload("res://scripts/items.gd")
 const Recipes := preload("res://scripts/recipes.gd")
 const Harvestables := preload("res://scripts/harvestables.gd")
-const BigFrog := preload("res://scripts/big_frog.gd")
+const Frog := preload("res://scripts/frog.gd")
 const Sounds := preload("res://scripts/sounds.gd")
 const Equipment := preload("res://scripts/equipment.gd")
 const CharacterSheet := preload("res://scripts/character_sheet.gd")
@@ -178,7 +178,7 @@ func _enemy_target() -> Node3D:
 	if player == null:
 		return null
 	var best: Node3D = null
-	var best_gap := BigFrog.REACH
+	var best_gap := Frog.REACH
 	for enemy: Node3D in get_tree().get_nodes_in_group("enemies"):
 		if not enemy.is_alive():
 			continue
