@@ -61,14 +61,11 @@ const HOP_SPEED := 5.0
 const HOP_UP := 2.5
 const CHASE_HOP_SECONDS := 0.25
 ## Half the frog's width, for reach: a bite lands within BITE_REACH of the
-## frog's edge, and a player's weapon within REACH of it (the server allows
-## SERVER_REACH, since it sees players slightly later).
+## frog's edge. Within REACH of it, a player is shown a prompt to attack it
+## (a slash reaches a little further: see scripts/slash.gd).
 const RADIUS := 0.35
 const BITE_REACH := 0.8
 const REACH := 1.8
-const SERVER_REACH := 2.8
-## Seconds between a player's swings, as for tools (see scripts/harvestables.gd).
-const SWING_SECONDS := 0.6
 ## Seconds it lies there after dying before it's gone.
 const DEATH_SECONDS := 1.0
 ## What a dead frog drops: item, how many, and the chance (0 to 1) of
@@ -115,7 +112,6 @@ var _bite_in := 0.0
 var _alone_for := 0.0
 ## Server side: the chance a bite misses, BITE_MISS_CHANCE (tests change it).
 var bite_miss_chance := BITE_MISS_CHANCE
-var _last_swing := {}  # peer -> Time.get_ticks_msec() of their last swing at the frog
 var _model: Node3D
 var _health_bar: HealthBar3D
 
@@ -143,11 +139,6 @@ func prompt_for(held: String) -> String:
 	if not Items.is_weapon(held):
 		return "Hold a sword to fight the %s (%d/%d)" % [DISPLAY_NAME, health, MAX_HEALTH]
 	return "[Left click] Attack the %s (%d/%d)" % [DISPLAY_NAME, health, MAX_HEALTH]
-
-
-## Client side: swing the held weapon at the frog, looking towards `yaw`.
-func attack(yaw: float) -> void:
-	_request_hit.rpc_id(1, yaw)
 
 
 ## Server side: takes `amount` health off the frog. `peer` is who did it (0
@@ -298,31 +289,6 @@ func _hop_towards(point: Vector3) -> void:
 
 
 # --- Network ----------------------------------------------------------------
-
-@rpc("any_peer", "call_local", "reliable")
-func _request_hit(yaw) -> void:
-	if not multiplayer.is_server() or not (yaw is float or yaw is int):
-		return
-	var peer := multiplayer.get_remote_sender_id()
-	# Looked up rather than named, so tests can load this without autoloads.
-	var session := get_node("/root/Session")
-	var body: Node3D = session.body_of(peer)
-	var held: String = session.held_of(peer)
-	if body == null or not Items.is_weapon(held) or not is_alive() or body.health <= 0:
-		return
-	var now := Time.get_ticks_msec()
-	if now - _last_swing.get(peer, -100000) < int(SWING_SECONDS * 1000.0 * 0.8):
-		return
-	if not body.spend_stamina(body.ATTACK_STAMINA):
-		return
-	_last_swing[peer] = now
-	if gap_to(body.global_position) > SERVER_REACH:
-		body.swing(float(yaw))
-		return
-	var at := global_position - body.global_position
-	body.swing(atan2(-at.x, -at.z))
-	take_damage(Items.attack_damage(held), peer)
-
 
 @rpc("authority", "call_local", "unreliable")
 func _play_hop() -> void:

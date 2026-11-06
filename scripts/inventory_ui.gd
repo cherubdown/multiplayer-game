@@ -148,8 +148,9 @@ func _input(event: InputEvent) -> void:
 		_swing()
 
 
-## Swings the held tool: a weapon at the enemy in reach if there is one,
-## otherwise at the tree or rock in reach if there is one.
+## Swings the held tool: a weapon in a wide slash that hits every enemy in
+## front (see scripts/slash.gd), anything else at the tree or rock in reach
+## if there is one.
 func _swing() -> void:
 	var harvestables: Node = get_parent().get("harvestables")
 	var player := _local_player()
@@ -165,14 +166,14 @@ func _swing() -> void:
 		return
 	_last_swing = now
 	var yaw: float = player.get_node("PlayerInput").yaw
-	var enemy := _enemy_target()
-	if enemy != null and Items.is_weapon(Session.held_item):
-		enemy.attack(yaw)
+	if Items.is_weapon(Session.held_item):
+		player.slash(yaw)
 	else:
 		harvestables.swing(_harvest_target(), yaw)
 
 
-## The nearest living enemy in the local player's reach, or null.
+## The nearest living enemy in the local player's reach, or null, for the
+## prompt.
 func _enemy_target() -> Node3D:
 	var player := _local_player()
 	if player == null:

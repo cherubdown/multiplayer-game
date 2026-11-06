@@ -503,6 +503,27 @@ func _build_animations() -> void:
 	library.add_animation("Swing", _animation_from(0.6, false,
 		[[0.0, idle_a], [0.22, wind_up], [0.34, strike], [0.6, idle_a]]))
 
+	# Slashing a weapon flat across in front: drawn back out to the right
+	# with the body turned that way and the blade pointing right, swept round
+	# with the blade pointing ahead, then through to the left.
+	var draw_back := {
+		"ArmUpper_R": Vector3(0, 0, 85), "ArmLower_R": Vector3(-40, 0, 0),
+		"ArmUpper_L": Vector3(25, 0, -15), "ArmLower_L": Vector3(40, 0, 0),
+		"Spine": Vector3(-4, -45, 0), "Head": Vector3(0, 30, 0), "lift": -0.01,
+	}
+	var sweep := {
+		"ArmUpper_R": Vector3(85, 0, 0), "ArmLower_R": Vector3(-80, 90, 0),
+		"ArmUpper_L": Vector3(10, 0, -25), "ArmLower_L": Vector3(30, 0, 0),
+		"Spine": Vector3(6, 0, 0), "lift": -0.02,
+	}
+	var follow_through := {
+		"ArmUpper_R": Vector3(85, 0, -45), "ArmLower_R": Vector3(-50, 90, 0),
+		"ArmUpper_L": Vector3(5, 0, -30), "ArmLower_L": Vector3(25, 0, 0),
+		"Spine": Vector3(6, 45, 0), "Head": Vector3(0, -30, 0), "lift": -0.02,
+	}
+	library.add_animation("Slash", _animation_from(0.6, false,
+		[[0.0, idle_a], [0.12, draw_back], [0.2, sweep], [0.28, follow_through], [0.6, idle_a]]))
+
 	_animation = AnimationPlayer.new()
 	_animation.name = "AnimationPlayer"
 	add_child(_animation)
