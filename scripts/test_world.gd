@@ -23,8 +23,8 @@ extends Node3D
 ##
 ## Frogs come in waves (see scripts/frog.gd): every FROG_WAVE_SECONDS the
 ## server puts FROG_WAVE_SIZE of them in a ring FROG_WAVE_RADIUS around each
-## living player, and they hop in and bite. A player never has more than
-## FROG_MAX_PER_PLAYER after them at once. EnemySpawner replicates them.
+## living player, and they hop in and bite. There are never more than
+## FROG_MAX frogs alive in the whole world at once. EnemySpawner replicates them.
 ## Players the frogs kill come back at the spawn with full health. Start the
 ## server (or the test) with --no-frog-waves to keep them away.
 
@@ -51,11 +51,11 @@ const RESPAWN_SECONDS := 60.0
 ## the Meadows (players spawn 4 m out).
 const CHEST_SPOT := Vector2(0.0, 7.0)
 ## Frog waves: seconds between them, how many frogs in each, how far from
-## the player the ring is, and how many frogs can be after one player at once.
+## the player the ring is, and how many frogs can be alive in the world at once.
 const FROG_WAVE_SECONDS := 10.0
 const FROG_WAVE_SIZE := 10
 const FROG_WAVE_RADIUS := 12.0
-const FROG_MAX_PER_PLAYER := 40
+const FROG_MAX := 1000
 ## Items lying around the spawn: item, count, angle, distance.
 const TEST_ITEMS := [
 	["wood", 5, 0.6, 6.0],
@@ -254,18 +254,18 @@ func spawn_frog_waves() -> void:
 
 
 ## Server side: FROG_WAVE_SIZE frogs in a ring FROG_WAVE_RADIUS around
-## `player`, facing in and after them, but never more than
-## FROG_MAX_PER_PLAYER after them at once. Spots in a tree or a rock move in
+## `player`, facing in and after them, but never more than FROG_MAX alive
+## in the world at once. Spots in a tree or a rock move in
 ## or out a little; spots in the sea are skipped. Returns the new frogs.
 func spawn_frog_wave(player: Node3D) -> Array:
 	var spawned := []
 	if terrain.gen == null:
 		return spawned
-	var after := 0
+	var alive := 0
 	for frog: Node in enemies.get_children():
-		if frog.is_alive() and frog.prey == player:
-			after += 1
-	var count := mini(FROG_WAVE_SIZE, FROG_MAX_PER_PLAYER - after)
+		if frog.is_alive():
+			alive += 1
+	var count := mini(FROG_WAVE_SIZE, FROG_MAX - alive)
 	var centre := player.global_position
 	var start := randf() * TAU
 	for i in count:
