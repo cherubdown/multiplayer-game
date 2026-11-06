@@ -5,7 +5,8 @@ extends SceneTree
 ## players, chasing down and biting the player it was sent after (missing one
 ## bite in four), going after someone else nearby once its player is gone and
 ## giving up when there's nobody, dying to three wood sword hits or two stone
-## sword hits, and what it drops: Frog Meat now and then and Frog Bile
+## sword hits, a sword slash hitting every frog in the half circle in front
+## and none behind or out of reach, and what it drops: Frog Meat now and then and Frog Bile
 ## rarely, popping out of it and bouncing to a stop. Run from the project folder:
 ##   godot --headless --path . -s tests/test_combat.gd
 ## Exits non-zero if any check fails.
@@ -15,6 +16,7 @@ const FROG_SCENE := preload("res://scenes/frog.tscn")
 const Player := preload("res://scripts/player.gd")
 const Frog := preload("res://scripts/frog.gd")
 const Items := preload("res://scripts/items.gd")
+const Slash := preload("res://scripts/slash.gd")
 const DropBounce := preload("res://scripts/drop_bounce.gd")
 
 var _failures := 0
@@ -51,6 +53,7 @@ func _run() -> void:
 		await _check_stamina(players)
 		await _check_poison(players)
 		await _check_frog(world, players)
+		await _check_slash(world, players)
 		await _check_loot()
 
 	world.queue_free()
@@ -323,6 +326,42 @@ func _check_frog(world: Node3D, players: Node3D) -> void:
 	await _wait(Frog.GIVE_UP_SECONDS + 1.0)
 	_check(not is_instance_valid(frog), "gives up and goes away when nobody is near")
 	far.queue_free()
+	await process_frame
+
+
+func _check_slash(world: Node3D, players: Node3D) -> void:
+	var origin := Vector3(100.0, 0.0, 100.0)
+	var player := _add_player(players, "7", origin)
+	await physics_frame
+	# Facing -Z (yaw 0): in front, off to both sides and right beside them is
+	# in the half circle; behind, and too far in front, isn't.
+	var spots := {
+		"ahead": Vector3(0.0, 0.0, -1.5), "ahead_left": Vector3(-1.4, 0.0, -1.0),
+		"ahead_right": Vector3(1.6, 0.0, -0.6), "beside_left": Vector3(-1.5, 0.0, 0.0),
+		"beside_right": Vector3(1.8, 0.0, 0.1), "behind": Vector3(0.0, 0.0, 1.5),
+		"behind_right": Vector3(1.2, 0.0, 1.2), "far_ahead": Vector3(0.0, 0.0, -Slash.REACH - Frog.RADIUS - 0.5),
+	}
+	var frogs := {}
+	for spot: String in spots:
+		frogs[spot] = _add_frog(world, origin + spots[spot])
+	var hit: Array = player.slash_with("wood_sword", 0.0, 0)
+	var damage := Items.attack_damage("wood_sword")
+	for spot: String in ["ahead", "ahead_left", "ahead_right", "beside_left", "beside_right"]:
+		_check(frogs[spot] in hit and frogs[spot].health == Frog.MAX_HEALTH - damage, "a slash hits the frog %s" % spot)
+	for spot: String in ["behind", "behind_right", "far_ahead"]:
+		_check(not frogs[spot] in hit and frogs[spot].health == Frog.MAX_HEALTH, "a slash misses the frog %s" % spot)
+	_check(player.stamina == Player.MAX_STAMINA - Player.ATTACK_STAMINA, "a slash costs one attack's stamina, however many it hits")
+	_check(player.slash_with("wood_sword", 0.0, 0).is_empty(), "can't slash again straight away")
+	await _wait(Slash.SECONDS_BETWEEN)
+	_check(player.slash_with("stone_axe", 0.0, 0).is_empty(), "an axe doesn't slash")
+	# Turned round, it's the ones behind that get hit.
+	hit = player.slash_with("wood_sword", PI, 0)
+	_check(frogs["behind"] in hit and frogs["behind_right"] in hit and not frogs["ahead"] in hit,
+		"turned round, a slash hits the frogs that were behind")
+	for frog: Node3D in frogs.values():
+		if is_instance_valid(frog):
+			frog.queue_free()
+	player.queue_free()
 	await process_frame
 
 

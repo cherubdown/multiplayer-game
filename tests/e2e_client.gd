@@ -476,7 +476,7 @@ func _check_fighting(world: Node, player: Node3D) -> void:
 			if not is_instance_valid(target) or not target.is_alive():
 				break
 			var at := target.global_position - player.global_position
-			target.attack(atan2(-at.x, -at.z))
+			player.slash(atan2(-at.x, -at.z))
 			await create_timer(0.6).timeout
 		_check(not is_instance_valid(target) or not target.is_alive(), "three wood sword hits kill a frog")
 	for frog: Node in enemies.get_children():

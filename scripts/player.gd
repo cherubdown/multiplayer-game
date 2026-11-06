@@ -44,6 +44,7 @@ const HealthBar3D := preload("res://scripts/health_bar_3d.gd")
 const Sounds := preload("res://scripts/sounds.gd")
 const Items := preload("res://scripts/items.gd")
 const DamageNumbers := preload("res://scripts/damage_numbers.gd")
+const Slash := preload("res://scripts/slash.gd")
 
 const SPEED := 5.0
 const WALK_SPEED := 2.0
@@ -144,6 +145,8 @@ var _was_airborne := false
 var _was_poisoned := false
 var _was_dead := false
 var _was_tired := false
+## Server side: Time.get_ticks_msec() of the last slash.
+var _last_slash := -100000
 
 
 func _enter_tree() -> void:
@@ -184,15 +187,58 @@ func _ready() -> void:
 
 
 ## Server side: turns the character to face `yaw` and plays a swing of the
-## held tool on every peer.
+## held tool on every peer: a horizontal slash for a weapon, an overhead chop
+## for anything else.
 func swing(yaw: float) -> void:
 	rotation.y = yaw
-	_play_swing.rpc()
+	_play_swing.rpc(yaw)
+
+
+## Client side, on your own character: slashes the held weapon towards `yaw`,
+## hitting every enemy in the half circle in front (see scripts/slash.gd).
+func slash(yaw: float) -> void:
+	_request_slash.rpc_id(1, yaw)
+
+
+## Server side: slashes the weapon `held` towards `yaw`, for `peer`. Costs
+## ATTACK_STAMINA and hits every enemy Slash.targets() finds, each for the
+## weapon's attack. Returns the enemies hit, or [] if the slash didn't happen
+## (too soon, too tired, dead, or not a weapon).
+func slash_with(held: String, yaw: float, peer: int) -> Array:
+	if not Items.is_weapon(held) or health <= 0:
+		return []
+	var now := Time.get_ticks_msec()
+	if now - _last_slash < int(Slash.SECONDS_BETWEEN * 1000.0 * 0.8):
+		return []
+	if not spend_stamina(ATTACK_STAMINA):
+		return []
+	_last_slash = now
+	swing(yaw)
+	var hit := Slash.targets(get_tree().get_nodes_in_group("enemies"), global_position, yaw)
+	for enemy: Node3D in hit:
+		enemy.take_damage(Items.attack_damage(held), peer)
+	return hit
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_slash(yaw) -> void:
+	if not multiplayer.is_server() or not (yaw is float or yaw is int):
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	# Looked up rather than named, so tests can load this without autoloads.
+	var session := get_node("/root/Session")
+	if session.body_of(peer) != self:
+		return
+	slash_with(session.held_of(peer), float(yaw), peer)
 
 
 @rpc("authority", "call_local", "unreliable")
-func _play_swing() -> void:
-	model.play_once("Swing")
+func _play_swing(yaw: float) -> void:
+	if Items.is_weapon(held_item):
+		model.play_once("Slash")
+		Slash.play(self, yaw, model.height if model.height > 0.0 else 1.8)
+	else:
+		model.play_once("Swing")
 	var heavy := Items.tool_type(held_item) in ["axe", "pickaxe"]
 	Sounds.play_on(self, "swing_heavy" if heavy else "swing")
 
